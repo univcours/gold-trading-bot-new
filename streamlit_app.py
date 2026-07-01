@@ -25,60 +25,77 @@ st.markdown("""
         border-radius: 15px;
         margin-bottom: 1.5rem;
         border: 2px solid #FFD700;
-        box-shadow: 0 0 30px rgba(255, 215, 0, 0.1);
     }
     .main-title h1 {
         color: #FFD700;
         margin: 0;
         font-size: 2.5rem;
-        text-shadow: 0 0 20px rgba(255, 215, 0, 0.3);
     }
-    .live-badge {
+    .status-offline {
+        display: inline-block;
+        background: #ff0000;
+        color: #fff;
+        padding: 5px 20px;
+        border-radius: 20px;
+        font-weight: bold;
+        font-size: 16px;
+        animation: blink 1s infinite;
+    }
+    .status-online {
         display: inline-block;
         background: #00ff00;
         color: #000;
-        padding: 3px 15px;
+        padding: 5px 20px;
         border-radius: 20px;
         font-weight: bold;
-        font-size: 14px;
+        font-size: 16px;
+        animation: blink 1s infinite;
+    }
+    .status-waiting {
+        display: inline-block;
+        background: #FFD700;
+        color: #000;
+        padding: 5px 20px;
+        border-radius: 20px;
+        font-weight: bold;
+        font-size: 16px;
         animation: blink 1s infinite;
     }
     @keyframes blink {
         0%, 100% { opacity: 1; }
-        50% { opacity: 0.3; }
+        50% { opacity: 0.5; }
     }
     .signal-box {
         padding: 20px;
         border-radius: 15px;
         margin: 10px 0;
         text-align: center;
-        transition: all 0.3s;
     }
     .signal-buy {
         background: linear-gradient(135deg, #0a2a0a, #1a4a1a);
         border: 2px solid #00ff00;
-        box-shadow: 0 0 30px rgba(0, 255, 0, 0.2);
     }
     .signal-sell {
         background: linear-gradient(135deg, #2a0a0a, #4a1a1a);
         border: 2px solid #ff0000;
-        box-shadow: 0 0 30px rgba(255, 0, 0, 0.2);
     }
     .signal-strong-buy {
         background: linear-gradient(135deg, #00ff00, #00aa00);
         border: 3px solid #00ff00;
         animation: pulse 1s infinite;
-        box-shadow: 0 0 50px rgba(0, 255, 0, 0.4);
     }
     .signal-strong-sell {
         background: linear-gradient(135deg, #ff0000, #aa0000);
         border: 3px solid #ff0000;
         animation: pulse 1s infinite;
-        box-shadow: 0 0 50px rgba(255, 0, 0, 0.4);
     }
     .signal-neutral {
         background: linear-gradient(135deg, #1a1a2a, #2a2a3a);
         border: 2px solid #666;
+    }
+    .signal-waiting {
+        background: linear-gradient(135deg, #2a2a1a, #3a3a2a);
+        border: 2px solid #FFD700;
     }
     @keyframes pulse {
         0%, 100% { transform: scale(1); }
@@ -112,6 +129,20 @@ st.markdown("""
     .level-type {
         color: #888;
         font-size: 11px;
+    }
+    .waiting-box {
+        padding: 40px;
+        text-align: center;
+        background: rgba(255, 215, 0, 0.05);
+        border-radius: 15px;
+        border: 2px dashed #FFD700;
+    }
+    .waiting-box h2 {
+        color: #FFD700;
+    }
+    .waiting-box p {
+        color: #aaa;
+        font-size: 16px;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -171,17 +202,25 @@ def get_klines_data(limit=200):
         pass
     return None
 
-# ====================== المؤشرات المتقدمة ======================
+def check_internet_connection():
+    """التحقق من الاتصال بالإنترنت"""
+    try:
+        requests.get("https://fapi.binance.com/fapi/v1/ping", timeout=2)
+        return True
+    except:
+        return False
+
+# ====================== المؤشرات ======================
 def calculate_indicators(df):
     if df is None or df.empty or len(df) < 30:
         return df
     
-    # ===== المتوسطات البسيطة =====
+    # ===== المتوسطات =====
     for period in [5, 10, 20, 50]:
         if len(df) >= period:
             df[f'SMA_{period}'] = df['close'].rolling(period).mean()
     
-    # ===== المتوسطات الأسية =====
+    # ===== EMA =====
     if len(df) >= 12:
         df['EMA_12'] = df['close'].ewm(span=12, adjust=False).mean()
     else:
@@ -212,7 +251,7 @@ def calculate_indicators(df):
     else:
         df['RSI'] = 50
     
-    # ===== Bollinger Bands =====
+    # ===== Bollinger =====
     if len(df) >= 20:
         df['BB_Mid'] = df['close'].rolling(20).mean()
         df['BB_Std'] = df['close'].rolling(20).std()
@@ -251,14 +290,14 @@ def calculate_indicators(df):
         df['Volume_SMA'] = df['volume']
         df['Volume_Ratio'] = 1
     
-    # ===== Pivot Points =====
+    # ===== Pivot =====
     df['Pivot'] = (df['high'] + df['low'] + df['close']) / 3
     df['R1'] = 2 * df['Pivot'] - df['low']
     df['S1'] = 2 * df['Pivot'] - df['high']
     
     return df
 
-# ====================== حساب الدعم والمقاومة ======================
+# ====================== حساب المستويات ======================
 def calculate_levels(df, bids, asks, current_price):
     levels = {
         'support': [],
@@ -267,25 +306,15 @@ def calculate_levels(df, bids, asks, current_price):
         'pending_sell': []
     }
     
-    # ===== من الأوردر بوك =====
     if bids is not None and asks is not None and not bids.empty and not asks.empty:
         for _, row in bids.nlargest(10, 'quantity').iterrows():
             if row['price'] < current_price:
-                levels['support'].append({
-                    'price': row['price'],
-                    'volume': row['quantity'],
-                    'type': 'Order Book'
-                })
+                levels['support'].append({'price': row['price'], 'volume': row['quantity'], 'type': 'Order Book'})
         
         for _, row in asks.nlargest(10, 'quantity').iterrows():
             if row['price'] > current_price:
-                levels['resistance'].append({
-                    'price': row['price'],
-                    'volume': row['quantity'],
-                    'type': 'Order Book'
-                })
+                levels['resistance'].append({'price': row['price'], 'volume': row['quantity'], 'type': 'Order Book'})
     
-    # ===== من المؤشرات =====
     if df is not None and not df.empty:
         last = df.iloc[-1]
         
@@ -306,21 +335,12 @@ def calculate_levels(df, bids, asks, current_price):
                 else:
                     levels['resistance'].append({'price': last[sma], 'volume': 0, 'type': sma})
     
-    # ===== الأوامر المعلقة =====
     if df is not None and not df.empty and 'ATR' in df.columns:
         atr = df['ATR'].iloc[-1] if not pd.isna(df['ATR'].iloc[-1]) else 5
         
         for mult in [0.3, 0.6, 1.0]:
-            levels['pending_buy'].append({
-                'price': current_price - atr * mult,
-                'type': f'Buy {mult*100:.0f}% ATR'
-            })
-        
-        for mult in [0.3, 0.6, 1.0]:
-            levels['pending_sell'].append({
-                'price': current_price + atr * mult,
-                'type': f'Sell {mult*100:.0f}% ATR'
-            })
+            levels['pending_buy'].append({'price': current_price - atr * mult, 'type': f'Buy {mult*100:.0f}% ATR'})
+            levels['pending_sell'].append({'price': current_price + atr * mult, 'type': f'Sell {mult*100:.0f}% ATR'})
     
     levels['support'] = sorted(levels['support'], key=lambda x: x['price'], reverse=True)[:10]
     levels['resistance'] = sorted(levels['resistance'], key=lambda x: x['price'])[:10]
@@ -335,13 +355,15 @@ def generate_signals(df, bids, asks, current_price, levels):
         'strong_buy': [],
         'strong_sell': [],
         'neutral': [],
+        'waiting': [],
         'score': 0,
         'reasons': [],
-        'recommendation': 'NEUTRAL'
+        'recommendation': 'WAITING'
     }
     
     if df is None or df.empty or len(df) < 30:
-        signals['neutral'].append("⏸️ Waiting for data...")
+        signals['waiting'].append("⏳ Waiting for live data...")
+        signals['recommendation'] = 'WAITING'
         return signals
     
     last = df.iloc[-1]
@@ -402,7 +424,6 @@ def generate_signals(df, bids, asks, current_price, levels):
             score -= 1
             reasons.append(f"🔴 Order Book Bearish (Ratio: {imbalance:.2f})")
     
-    # ===== النتيجة =====
     signals['score'] = score
     signals['reasons'] = reasons
     
@@ -426,11 +447,23 @@ def generate_signals(df, bids, asks, current_price, levels):
     
     return signals
 
-# ====================== شارت متقدم ======================
-def create_advanced_chart(df, bids, asks, current_price, levels, signals):
+# ====================== شارت ======================
+def create_chart(df, bids, asks, current_price, levels, signals):
     if df is None or df.empty:
         fig = go.Figure()
-        fig.update_layout(title="Loading data...")
+        fig.update_layout(
+            title="⏳ Waiting for Live Data...",
+            template='plotly_dark',
+            annotations=[{
+                'text': '🔴 No Internet Connection<br>Waiting for data...',
+                'xref': 'paper',
+                'yref': 'paper',
+                'x': 0.5,
+                'y': 0.5,
+                'showarrow': False,
+                'font': {'size': 24, 'color': '#FFD700'}
+            }]
+        )
         return fig
     
     fig = make_subplots(
@@ -449,7 +482,7 @@ def create_advanced_chart(df, bids, asks, current_price, levels, signals):
         column_widths=[0.55, 0.45]
     )
 
-    # ===== Price Chart =====
+    # Price
     fig.add_trace(
         go.Candlestick(
             x=df['timestamp'],
@@ -465,7 +498,7 @@ def create_advanced_chart(df, bids, asks, current_price, levels, signals):
         row=1, col=1
     )
     
-    # ===== SMA =====
+    # SMA
     for sma, color in [('SMA_20', '#FFD700'), ('SMA_50', '#FF6B6B')]:
         if sma in df.columns:
             fig.add_trace(
@@ -473,7 +506,7 @@ def create_advanced_chart(df, bids, asks, current_price, levels, signals):
                 row=1, col=1
             )
     
-    # ===== BB =====
+    # BB
     if 'BB_Upper' in df.columns and 'BB_Lower' in df.columns:
         fig.add_trace(
             go.Scatter(x=df['timestamp'], y=df['BB_Upper'], mode='lines', name='BB Upper', line=dict(color='#ff0000', width=1, dash='dash')),
@@ -484,14 +517,14 @@ def create_advanced_chart(df, bids, asks, current_price, levels, signals):
             row=1, col=1
         )
     
-    # ===== الدعم والمقاومة =====
+    # Levels
     if levels:
         for support in levels['support'][:5]:
             fig.add_hline(y=support['price'], line_dash="dash", line_color="green", opacity=0.7, row=1, col=1)
         for resistance in levels['resistance'][:5]:
             fig.add_hline(y=resistance['price'], line_dash="dash", line_color="red", opacity=0.7, row=1, col=1)
     
-    # ===== Order Book =====
+    # Order Book
     if bids is not None and asks is not None and not bids.empty and not asks.empty:
         fig.add_trace(
             go.Bar(x=bids['price'], y=bids['quantity'], name='Bids', marker_color='#00ff00', opacity=0.8),
@@ -503,7 +536,7 @@ def create_advanced_chart(df, bids, asks, current_price, levels, signals):
         )
         fig.add_vline(x=current_price, line_dash="dash", line_color="#FFFFFF", opacity=0.8, row=1, col=2)
     
-    # ===== RSI =====
+    # RSI
     if 'RSI' in df.columns:
         fig.add_trace(
             go.Scatter(x=df['timestamp'], y=df['RSI'], mode='lines', name='RSI', line=dict(color='#FF6B6B', width=2)),
@@ -512,7 +545,7 @@ def create_advanced_chart(df, bids, asks, current_price, levels, signals):
         fig.add_hline(y=70, line_dash="dash", line_color="red", row=2, col=1)
         fig.add_hline(y=30, line_dash="dash", line_color="green", row=2, col=1)
     
-    # ===== MACD =====
+    # MACD
     if 'MACD' in df.columns and 'Signal' in df.columns:
         fig.add_trace(
             go.Scatter(x=df['timestamp'], y=df['MACD'], mode='lines', name='MACD', line=dict(color='#FFD700', width=2)),
@@ -528,7 +561,7 @@ def create_advanced_chart(df, bids, asks, current_price, levels, signals):
             row=2, col=2
         )
     
-    # ===== Volume =====
+    # Volume
     if 'volume' in df.columns:
         colors = ['#00ff00' if df['close'].iloc[i] >= df['open'].iloc[i] else '#ff0000' for i in range(len(df))]
         fig.add_trace(
@@ -536,7 +569,7 @@ def create_advanced_chart(df, bids, asks, current_price, levels, signals):
             row=3, col=1
         )
     
-    # ===== Levels Summary =====
+    # Summary
     if levels:
         support_text = "🟢 Support:\n"
         for s in levels['support'][:5]:
@@ -567,7 +600,7 @@ def create_advanced_chart(df, bids, asks, current_price, levels, signals):
     fig.update_layout(
         height=1100,
         template='plotly_dark',
-        title_text=f'🥇 Gold (XAUUSD) - Live Trading | Price: ${current_price:.2f}' if current_price else '🥇 Gold (XAUUSD) - Live Trading',
+        title_text=f'🥇 Gold (XAUUSD) - Live Trading | Price: ${current_price:.2f}' if current_price else '🥇 Gold (XAUUSD) - Waiting for Data',
         title_font=dict(size=24, color='#FFD700'),
         showlegend=True,
         legend=dict(
@@ -584,11 +617,32 @@ def create_advanced_chart(df, bids, asks, current_price, levels, signals):
     return fig
 
 # ====================== عرض الإشارات ======================
-def display_signals(signals, current_price, levels):
-    st.markdown("## 🎯 Trading Signals (Auto-Update)")
+def display_signals(signals, current_price, levels, is_online):
+    st.markdown("## 🎯 Trading Signals")
+    
+    # ===== حالة الاتصال =====
+    if is_online:
+        st.markdown(f'<span class="status-online">🟢 ONLINE - Live Data</span>', unsafe_allow_html=True)
+    else:
+        st.markdown(f'<span class="status-offline">🔴 OFFLINE - Waiting for connection...</span>', unsafe_allow_html=True)
     
     score = signals['score']
     recommendation = signals['recommendation']
+    
+    # ===== عرض الإشارة =====
+    if recommendation == 'WAITING':
+        bg_class = "signal-waiting"
+        icon = "⏳"
+        text = "WAITING FOR DATA"
+        st.markdown(f"""
+        <div class="waiting-box">
+            <h2>⏳ Waiting for Live Data</h2>
+            <p>🔴 No internet connection or Binance API unavailable</p>
+            <p>⏰ The system will automatically connect when data becomes available</p>
+            <p style="font-size: 14px; color: #888;">Retrying every 5 seconds...</p>
+        </div>
+        """, unsafe_allow_html=True)
+        return
     
     if recommendation == 'STRONG BUY':
         bg_class = "signal-strong-buy"
@@ -676,43 +730,92 @@ def main():
     <div class="main-title">
         <h1>🥇 Gold Trading Pro</h1>
         <p style="color: #aaa; margin: 5px 0;">📊 Real-time Signals | Order Book | Auto-Update</p>
-        <p style="margin: 10px 0;"><span class="live-badge">🔴 LIVE</span></p>
     </div>
     """, unsafe_allow_html=True)
     
+    # ===== التحقق من الاتصال =====
+    is_online = check_internet_connection()
+    
+    if not is_online:
+        st.warning("🔴 **No Internet Connection!** Waiting for data...")
+        st.info("⏳ The system will automatically connect when the internet is available")
+        
+        # عرض حالة الانتظار
+        st.markdown("""
+        <div class="waiting-box">
+            <h2>⏳ Waiting for Connection</h2>
+            <p style="font-size: 20px;">🔴 Binance API Unavailable</p>
+            <p>📡 Please check your internet connection</p>
+            <p style="font-size: 14px; color: #888;">Auto-retrying every 5 seconds...</p>
+        </div>
+        """, unsafe_allow_html=True)
+        
+        # ===== شارت انتظار =====
+        fig = go.Figure()
+        fig.update_layout(
+            title="⏳ Waiting for Live Data...",
+            template='plotly_dark',
+            height=600,
+            annotations=[{
+                'text': '🔴 No Internet Connection<br>Waiting for Binance API...',
+                'xref': 'paper',
+                'yref': 'paper',
+                'x': 0.5,
+                'y': 0.5,
+                'showarrow': False,
+                'font': {'size': 28, 'color': '#FFD700'}
+            }]
+        )
+        st.plotly_chart(fig, use_container_width=True)
+        
+        time.sleep(5)
+        st.rerun()
+        return
+    
+    # ===== جلب البيانات =====
     with st.spinner("🔄 Loading market data..."):
         current_price = get_real_price()
-        if not current_price:
-            current_price = 3315.50
+        
+        if current_price is None:
+            st.warning("⚠️ Binance API temporarily unavailable. Retrying...")
+            st.markdown("""
+            <div class="waiting-box">
+                <h2>⏳ Waiting for Data</h2>
+                <p>🔄 Binance API is responding slowly</p>
+                <p>⏰ The system will retry automatically</p>
+            </div>
+            """, unsafe_allow_html=True)
+            time.sleep(3)
+            st.rerun()
+            return
         
         bids, asks = get_order_book_real(100)
         if bids is None or asks is None:
-            bids = pd.DataFrame({'price': [current_price - i*0.15 for i in range(100)], 'quantity': [np.random.randint(10,100) for _ in range(100)]})
-            asks = pd.DataFrame({'price': [current_price + i*0.15 for i in range(100)], 'quantity': [np.random.randint(10,100) for _ in range(100)]})
+            bids = pd.DataFrame({'price': [], 'quantity': []})
+            asks = pd.DataFrame({'price': [], 'quantity': []})
         
         df = get_klines_data(200)
         if df is None or df.empty:
-            dates = pd.date_range(end=datetime.now(), periods=200, freq='1min')
-            price = current_price - 10
-            data = []
-            for i in range(200):
-                price += np.random.randn() * 0.1
-                data.append([dates[i], price, price+0.1, price-0.1, price+np.random.randn()*0.05, np.random.randint(100,1000)])
-            df = pd.DataFrame(data, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
+            st.warning("⚠️ No candlestick data available. Waiting for data...")
+            time.sleep(3)
+            st.rerun()
+            return
         
+        # ===== حساب كلشي =====
         df = calculate_indicators(df)
         levels = calculate_levels(df, bids, asks, current_price)
         signals = generate_signals(df, bids, asks, current_price, levels)
     
-    display_signals(signals, current_price, levels)
+    # ===== العرض =====
+    display_signals(signals, current_price, levels, is_online)
     
     st.subheader("📈 Live Chart")
-    fig = create_advanced_chart(df, bids, asks, current_price, levels, signals)
+    fig = create_chart(df, bids, asks, current_price, levels, signals)
     st.plotly_chart(fig, use_container_width=True)
     
     st.divider()
     
-    if bids is not None and asks is not None:
+    if bids is not None and asks is not None and not bids.empty and not asks.empty:
         st.subheader("📊 Order Book")
         col1, col2 = st.columns(2)
         with col1:
@@ -721,6 +824,8 @@ def main():
         with col2:
             st.markdown("### 🔴 Asks")
             st.dataframe(asks.head(30), use_container_width=True)
+    else:
+        st.info("⏳ Waiting for Order Book data...")
     
     st.caption("🔄 Auto-updates every 5 seconds...")
     time.sleep(5)
