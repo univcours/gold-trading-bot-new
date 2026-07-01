@@ -15,11 +15,12 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# ====================== دوال جلب البيانات ======================
+# ====================== دوال جلب البيانات الحقيقية ======================
 @st.cache_data(ttl=10)
 def get_klines(symbol="XAUUSDT", interval="1m", limit=100):
-    """جلب بيانات الشموع من Binance"""
+    """جلب بيانات الشموع الحقيقية من Binance"""
     try:
+        # استعمال API ديال Binance الرسمي
         url = "https://api.binance.com/api/v3/klines"
         params = {
             "symbol": symbol,
@@ -27,33 +28,43 @@ def get_klines(symbol="XAUUSDT", interval="1m", limit=100):
             "limit": limit
         }
         
-        response = requests.get(url, params=params, timeout=10)
+        headers = {
+            "User-Agent": "Mozilla/5.0"
+        }
         
-        if response.status_code != 200:
+        response = requests.get(url, params=params, headers=headers, timeout=10)
+        
+        if response.status_code == 200:
+            data = response.json()
+            
+            if not data:
+                st.warning("⚠️ لا توجد بيانات من Binance، نستعمل بيانات تجريبية")
+                return generate_mock_data(limit)
+            
+            df = pd.DataFrame(data, columns=[
+                'timestamp', 'open', 'high', 'low', 'close', 'volume',
+                'close_time', 'quote_asset_volume', 'number_of_trades',
+                'taker_buy_base_asset_volume', 'taker_buy_quote_asset_volume', 'ignore'
+            ])
+            
+            df['timestamp'] = pd.to_datetime(df['timestamp'], unit='ms')
+            df[['open', 'high', 'low', 'close', 'volume']] = df[['open', 'high', 'low', 'close', 'volume']].astype(float)
+            
+            return df[['timestamp', 'open', 'high', 'low', 'close', 'volume']]
+        else:
+            st.warning(f"⚠️ API Binance مشغول (Status: {response.status_code})، نستعمل بيانات تجريبية")
             return generate_mock_data(limit)
             
-        data = response.json()
-        
-        if not data:
-            return generate_mock_data(limit)
-        
-        df = pd.DataFrame(data, columns=[
-            'timestamp', 'open', 'high', 'low', 'close', 'volume',
-            'close_time', 'quote_asset_volume', 'number_of_trades',
-            'taker_buy_base_asset_volume', 'taker_buy_quote_asset_volume', 'ignore'
-        ])
-        
-        df['timestamp'] = pd.to_datetime(df['timestamp'], unit='ms')
-        df[['open', 'high', 'low', 'close', 'volume']] = df[['open', 'high', 'low', 'close', 'volume']].astype(float)
-        
-        return df[['timestamp', 'open', 'high', 'low', 'close', 'volume']]
-    
+    except requests.exceptions.Timeout:
+        st.warning("⚠️ الوقت انتهى في الاتصال بـ Binance، نستعمل بيانات تجريبية")
+        return generate_mock_data(limit)
     except Exception as e:
+        st.warning(f"⚠️ خطأ في الاتصال: {str(e)}، نستعمل بيانات تجريبية")
         return generate_mock_data(limit)
 
 @st.cache_data(ttl=5)
 def get_order_book(symbol="XAUUSDT", limit=50):
-    """جلب الأوردر بوك من Binance"""
+    """جلب الأوردر بوك الحقيقي من Binance"""
     try:
         url = "https://api.binance.com/api/v3/depth"
         params = {
@@ -61,48 +72,78 @@ def get_order_book(symbol="XAUUSDT", limit=50):
             "limit": limit
         }
         
-        response = requests.get(url, params=params, timeout=10)
+        headers = {
+            "User-Agent": "Mozilla/5.0"
+        }
         
-        if response.status_code != 200:
+        response = requests.get(url, params=params, headers=headers, timeout=10)
+        
+        if response.status_code == 200:
+            data = response.json()
+            
+            if not data or 'bids' not in data or 'asks' not in data:
+                return generate_mock_order_book(limit)
+            
+            bids = pd.DataFrame(data['bids'], columns=['price', 'quantity'], dtype=float)
+            asks = pd.DataFrame(data['asks'], columns=['price', 'quantity'], dtype=float)
+            
+            if len(bids) == 0 or len(asks) == 0:
+                return generate_mock_order_book(limit)
+            
+            # إضافة عمود المجموع التراكمي
+            bids['cumulative'] = bids['quantity'].cumsum()
+            asks['cumulative'] = asks['quantity'].cumsum()
+            
+            # إضافة عمود النسبة المئوية للحجم
+            total_bid_vol = bids['quantity'].sum()
+            total_ask_vol = asks['quantity'].sum()
+            bids['volume_percent'] = (bids['quantity'] / total_bid_vol * 100) if total_bid_vol > 0 else 0
+            asks['volume_percent'] = (asks['quantity'] / total_ask_vol * 100) if total_ask_vol > 0 else 0
+            
+            return bids, asks
+        else:
             return generate_mock_order_book(limit)
             
-        data = response.json()
-        
-        if not data or 'bids' not in data or 'asks' not in data:
-            return generate_mock_order_book(limit)
-        
-        bids = pd.DataFrame(data['bids'], columns=['price', 'quantity'], dtype=float)
-        asks = pd.DataFrame(data['asks'], columns=['price', 'quantity'], dtype=float)
-        
-        if len(bids) == 0 or len(asks) == 0:
-            return generate_mock_order_book(limit)
-        
-        bids['cumulative'] = bids['quantity'].cumsum()
-        asks['cumulative'] = asks['quantity'].cumsum()
-        
-        total_bid_vol = bids['quantity'].sum()
-        total_ask_vol = asks['quantity'].sum()
-        bids['volume_percent'] = (bids['quantity'] / total_bid_vol * 100) if total_bid_vol > 0 else 0
-        asks['volume_percent'] = (asks['quantity'] / total_ask_vol * 100) if total_ask_vol > 0 else 0
-        
-        return bids, asks
-    
     except Exception as e:
         return generate_mock_order_book(limit)
 
+@st.cache_data(ttl=5)
+def get_current_price(symbol="XAUUSDT"):
+    """جلب السعر الحالي للذهب من Binance"""
+    try:
+        url = "https://api.binance.com/api/v3/ticker/price"
+        params = {"symbol": symbol}
+        
+        headers = {"User-Agent": "Mozilla/5.0"}
+        
+        response = requests.get(url, params=params, headers=headers, timeout=5)
+        
+        if response.status_code == 200:
+            data = response.json()
+            if 'price' in data:
+                return float(data['price'])
+            else:
+                return None
+        else:
+            return None
+            
+    except Exception as e:
+        return None
+
 def generate_mock_data(limit=100):
-    """توليد بيانات تجريبية"""
+    """توليد بيانات تجريبية (فقط عند فشل الاتصال)"""
     dates = pd.date_range(end=datetime.now(), periods=limit, freq='1min')
-    base_price = 3300 + np.random.randn() * 20
+    # نستعمل سعر قريب من السعر الحقيقي
+    base_price = 3300 + np.random.randn() * 10
     
     data = []
     for i in range(limit):
-        change = np.random.randn() * 0.5
+        change = np.random.randn() * 0.3
         base_price += change
         open_p = base_price
-        close_p = base_price + np.random.randn() * 0.3
-        high_p = max(open_p, close_p) + abs(np.random.randn() * 0.5)
-        low_p = min(open_p, close_p) - abs(np.random.randn() * 0.5)
+        close_p = base_price + np.random.randn() * 0.2
+        high_p = max(open_p, close_p) + abs(np.random.randn() * 0.3)
+        low_p = min(open_p, close_p) - abs(np.random.randn() * 0.3)
         volume = np.random.randint(50, 500)
         data.append([dates[i], open_p, high_p, low_p, close_p, volume])
     
@@ -110,16 +151,17 @@ def generate_mock_data(limit=100):
     return df
 
 def generate_mock_order_book(limit=50):
-    """توليد بيانات تجريبية للأوردر بوك"""
-    base_price = 3300 + np.random.randn() * 5
+    """توليد بيانات تجريبية للأوردر بوك (فقط عند فشل الاتصال)"""
+    # نستعمل سعر قريب من السعر الحقيقي
+    base_price = 3300 + np.random.randn() * 2
     
     bids = pd.DataFrame({
-        'price': [base_price - i * 0.2 for i in range(limit)],
+        'price': [base_price - i * 0.15 for i in range(limit)],
         'quantity': [np.random.randint(5, 50) for _ in range(limit)]
     })
     
     asks = pd.DataFrame({
-        'price': [base_price + i * 0.2 for i in range(limit)],
+        'price': [base_price + i * 0.15 for i in range(limit)],
         'quantity': [np.random.randint(5, 50) for _ in range(limit)]
     })
     
@@ -367,7 +409,7 @@ def display_detailed_order_book(bids, asks):
         st.dataframe(top_asks.style.format({'price': '${:.2f}', 'volume_percent': '{:.2f}%'}))
 
 # ====================== إحصائيات السوق ======================
-def display_market_stats(df, bids, asks):
+def display_market_stats(df, bids, asks, current_price):
     """عرض إحصائيات السوق"""
     
     st.subheader("📈 Live Market Statistics")
@@ -376,13 +418,18 @@ def display_market_stats(df, bids, asks):
         st.warning("⚠️ لا توجد بيانات")
         return
     
-    current_price = df['close'].iloc[-1]
-    price_change = ((df['close'].iloc[-1] - df['open'].iloc[0]) / df['open'].iloc[0] * 100)
+    # نستعمل السعر الحقيقي إذا كان موجود
+    if current_price:
+        price = current_price
+        price_change = ((current_price - df['open'].iloc[0]) / df['open'].iloc[0] * 100)
+    else:
+        price = df['close'].iloc[-1]
+        price_change = ((df['close'].iloc[-1] - df['open'].iloc[0]) / df['open'].iloc[0] * 100)
     
     col1, col2, col3, col4 = st.columns(4)
     
     with col1:
-        st.metric("💰 Price", f"${current_price:.2f}", f"{price_change:+.2f}%")
+        st.metric("💰 Gold Price", f"${price:.2f}", f"{price_change:+.2f}%")
     
     with col2:
         st.metric("📊 Volume", f"${df['volume'].sum():,.0f}")
@@ -461,16 +508,24 @@ def main():
     # ===== جلب البيانات =====
     with st.spinner("🔄 Loading market data..."):
         try:
+            # جلب السعر الحقيقي أولاً
+            current_price = get_current_price("XAUUSDT")
+            
+            if current_price:
+                st.success(f"✅ السعر الحقيقي: ${current_price:.2f}")
+            else:
+                st.warning("⚠️ جاري استعمال بيانات تجريبية")
+            
+            # جلب بيانات الشموع
             df = get_klines("XAUUSDT", timeframe, candle_limit)
             
             if df.empty:
-                st.error("❌ Failed to fetch candlestick data. Using simulated data.")
                 df = generate_mock_data(candle_limit)
             
+            # جلب الأوردر بوك
             bids, asks = get_order_book("XAUUSDT", depth_levels)
             
             if bids.empty or asks.empty:
-                st.warning("⚠️ Using simulated order book data")
                 bids, asks = generate_mock_order_book(depth_levels)
             
         except Exception as e:
@@ -478,7 +533,7 @@ def main():
             return
     
     # ===== عرض البيانات =====
-    display_market_stats(df, bids, asks)
+    display_market_stats(df, bids, asks, current_price)
     
     st.divider()
     
