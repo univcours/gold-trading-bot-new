@@ -10,7 +10,7 @@ import json
 
 # ====================== إعدادات الصفحة ======================
 st.set_page_config(
-    page_title="Gold Trading Pro - Live Signals",
+    page_title="Gold Trading Pro - Advanced",
     page_icon="🥇",
     layout="wide"
 )
@@ -18,71 +18,107 @@ st.set_page_config(
 # ====================== CSS ======================
 st.markdown("""
 <style>
-    .signal-box {
-        padding: 15px;
-        border-radius: 10px;
-        margin: 5px 0;
+    .main-title {
         text-align: center;
+        padding: 1.5rem;
+        background: linear-gradient(135deg, #0a0a1a, #1a1a2e, #0a0a1a);
+        border-radius: 15px;
+        margin-bottom: 1.5rem;
+        border: 2px solid #FFD700;
+        box-shadow: 0 0 30px rgba(255, 215, 0, 0.1);
+    }
+    .main-title h1 {
+        color: #FFD700;
+        margin: 0;
+        font-size: 2.5rem;
+        text-shadow: 0 0 20px rgba(255, 215, 0, 0.3);
+    }
+    .live-badge {
+        display: inline-block;
+        background: #00ff00;
+        color: #000;
+        padding: 3px 15px;
+        border-radius: 20px;
+        font-weight: bold;
+        font-size: 14px;
+        animation: blink 1s infinite;
+    }
+    @keyframes blink {
+        0%, 100% { opacity: 1; }
+        50% { opacity: 0.3; }
+    }
+    .signal-box {
+        padding: 20px;
+        border-radius: 15px;
+        margin: 10px 0;
+        text-align: center;
+        transition: all 0.3s;
     }
     .signal-buy {
-        background: linear-gradient(90deg, #1a3a1a, #0a2a0a);
+        background: linear-gradient(135deg, #0a2a0a, #1a4a1a);
         border: 2px solid #00ff00;
-        color: #00ff00;
+        box-shadow: 0 0 30px rgba(0, 255, 0, 0.2);
     }
     .signal-sell {
-        background: linear-gradient(90deg, #3a1a1a, #2a0a0a);
+        background: linear-gradient(135deg, #2a0a0a, #4a1a1a);
         border: 2px solid #ff0000;
-        color: #ff0000;
-    }
-    .signal-neutral {
-        background: linear-gradient(90deg, #1a1a2a, #0a0a1a);
-        border: 2px solid #888888;
-        color: #888888;
+        box-shadow: 0 0 30px rgba(255, 0, 0, 0.2);
     }
     .signal-strong-buy {
-        background: linear-gradient(90deg, #00ff00, #00aa00);
+        background: linear-gradient(135deg, #00ff00, #00aa00);
         border: 3px solid #00ff00;
-        color: #000;
-        font-weight: bold;
         animation: pulse 1s infinite;
+        box-shadow: 0 0 50px rgba(0, 255, 0, 0.4);
     }
     .signal-strong-sell {
-        background: linear-gradient(90deg, #ff0000, #aa0000);
+        background: linear-gradient(135deg, #ff0000, #aa0000);
         border: 3px solid #ff0000;
-        color: #fff;
-        font-weight: bold;
         animation: pulse 1s infinite;
+        box-shadow: 0 0 50px rgba(255, 0, 0, 0.4);
+    }
+    .signal-neutral {
+        background: linear-gradient(135deg, #1a1a2a, #2a2a3a);
+        border: 2px solid #666;
     }
     @keyframes pulse {
-        0% { opacity: 1; transform: scale(1); }
-        50% { opacity: 0.8; transform: scale(1.02); }
-        100% { opacity: 1; transform: scale(1); }
+        0%, 100% { transform: scale(1); }
+        50% { transform: scale(1.02); }
     }
-    .level-box {
-        padding: 8px;
-        border-radius: 5px;
-        margin: 3px 0;
-        font-size: 12px;
+    .level-card {
+        padding: 10px;
+        border-radius: 8px;
+        margin: 5px 0;
+        font-size: 13px;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
     }
-    .support {
-        background: rgba(0, 255, 0, 0.15);
-        border-left: 3px solid #00ff00;
+    .support-level {
+        background: rgba(0, 255, 0, 0.1);
+        border-left: 4px solid #00ff00;
     }
-    .resistance {
-        background: rgba(255, 0, 0, 0.15);
-        border-left: 3px solid #ff0000;
+    .resistance-level {
+        background: rgba(255, 0, 0, 0.1);
+        border-left: 4px solid #ff0000;
     }
-    .pending {
-        background: rgba(255, 215, 0, 0.15);
-        border-left: 3px solid #FFD700;
+    .pending-level {
+        background: rgba(255, 215, 0, 0.1);
+        border-left: 4px solid #FFD700;
+    }
+    .level-price {
+        font-weight: bold;
+        font-size: 16px;
+    }
+    .level-type {
+        color: #888;
+        font-size: 11px;
     }
 </style>
 """, unsafe_allow_html=True)
 
-# ====================== جلب السعر الحقيقي ======================
+# ====================== دوال جلب البيانات ======================
 @st.cache_data(ttl=5)
 def get_real_price():
-    """جلب السعر الحقيقي من Binance"""
     try:
         url = "https://fapi.binance.com/fapi/v1/ticker/price?symbol=XAUUSDT"
         headers = {"User-Agent": "Mozilla/5.0"}
@@ -95,10 +131,9 @@ def get_real_price():
     return None
 
 @st.cache_data(ttl=5)
-def get_order_book_real():
-    """جلب الأوردر بوك الحقيقي"""
+def get_order_book_real(limit=150):
     try:
-        url = "https://fapi.binance.com/fapi/v1/depth?symbol=XAUUSDT&limit=100"
+        url = f"https://fapi.binance.com/fapi/v1/depth?symbol=XAUUSDT&limit={limit}"
         headers = {"User-Agent": "Mozilla/5.0"}
         response = requests.get(url, headers=headers, timeout=3)
         if response.status_code == 200:
@@ -111,8 +146,7 @@ def get_order_book_real():
     return None, None
 
 @st.cache_data(ttl=10)
-def get_klines_data(limit=200):
-    """جلب بيانات الشموع"""
+def get_klines_data(limit=300):
     try:
         url = "https://fapi.binance.com/fapi/v1/klines"
         params = {
@@ -137,20 +171,16 @@ def get_klines_data(limit=200):
         pass
     return None
 
-# ====================== حساب المؤشرات ======================
+# ====================== المؤشرات المتقدمة ======================
 def calculate_indicators(df):
-    """حساب جميع المؤشرات الفنية"""
-    
     if df is None or df.empty or len(df) < 30:
         return df
     
     # ===== المتوسطات =====
-    df['SMA_5'] = df['close'].rolling(5).mean()
-    df['SMA_10'] = df['close'].rolling(10).mean()
-    df['SMA_20'] = df['close'].rolling(20).mean()
-    df['SMA_50'] = df['close'].rolling(50).mean()
-    df['EMA_12'] = df['close'].ewm(span=12, adjust=False).mean()
-    df['EMA_26'] = df['close'].ewm(span=26, adjust=False).mean()
+    for period in [5, 10, 20, 50, 100, 200]:
+        if len(df) >= period:
+            df[f'SMA_{period}'] = df['close'].rolling(period).mean()
+            df[f'EMA_{period}'] = df['close'].ewm(span=period, adjust=False).mean()
     
     # ===== RSI =====
     delta = df['close'].diff()
@@ -170,7 +200,6 @@ def calculate_indicators(df):
     df['BB_Upper'] = df['BB_Mid'] + (df['BB_Std'] * 2)
     df['BB_Lower'] = df['BB_Mid'] - (df['BB_Std'] * 2)
     df['BB_Width'] = df['BB_Upper'] - df['BB_Lower']
-    df['BB_Position'] = (df['close'] - df['BB_Lower']) / (df['BB_Upper'] - df['BB_Lower'])
     
     # ===== Stochastic =====
     low_14 = df['low'].rolling(14).min()
@@ -188,6 +217,8 @@ def calculate_indicators(df):
     # ===== Ichimoku =====
     df['Tenkan'] = (df['high'].rolling(9).max() + df['low'].rolling(9).min()) / 2
     df['Kijun'] = (df['high'].rolling(26).max() + df['low'].rolling(26).min()) / 2
+    df['Senkou_A'] = (df['Tenkan'] + df['Kijun']) / 2
+    df['Senkou_B'] = (df['high'].rolling(52).max() + df['low'].rolling(52).min()) / 2
     
     # ===== Volume =====
     df['Volume_SMA'] = df['volume'].rolling(20).mean()
@@ -200,134 +231,96 @@ def calculate_indicators(df):
     df['S1'] = 2 * df['Pivot'] - df['high']
     df['R2'] = df['Pivot'] + (df['high'] - df['low'])
     df['S2'] = df['Pivot'] - (df['high'] - df['low'])
-    df['R3'] = df['R1'] + (df['high'] - df['low'])
-    df['S3'] = df['S1'] - (df['high'] - df['low'])
+    df['R3'] = df['Pivot'] + 2 * (df['high'] - df['low'])
+    df['S3'] = df['Pivot'] - 2 * (df['high'] - df['low'])
     
     return df
 
-# ====================== حساب الدعم والمقاومة ======================
-def calculate_support_resistance(df, bids, asks, current_price):
-    """حساب مستويات الدعم والمقاومة من الأوردر بوك"""
-    
+# ====================== حساب الدعم والمقاومة المتقدم ======================
+def calculate_levels(df, bids, asks, current_price):
     levels = {
         'support': [],
         'resistance': [],
         'pending_buy': [],
-        'pending_sell': []
+        'pending_sell': [],
+        'orderbook_bids': [],
+        'orderbook_asks': []
     }
     
     # ===== من الأوردر بوك =====
     if bids is not None and asks is not None and not bids.empty and not asks.empty:
-        # نقاط الدعم (أكبر كميات شراء)
-        top_bids = bids.nlargest(10, 'quantity')
-        for _, row in top_bids.iterrows():
+        # أكبر كميات شراء (دعم)
+        for _, row in bids.nlargest(15, 'quantity').iterrows():
             if row['price'] < current_price:
                 levels['support'].append({
                     'price': row['price'],
                     'volume': row['quantity'],
                     'type': 'Order Book'
                 })
+                levels['orderbook_bids'].append(row['price'])
         
-        # نقاط المقاومة (أكبر كميات بيع)
-        top_asks = asks.nlargest(10, 'quantity')
-        for _, row in top_asks.iterrows():
+        # أكبر كميات بيع (مقاومة)
+        for _, row in asks.nlargest(15, 'quantity').iterrows():
             if row['price'] > current_price:
                 levels['resistance'].append({
                     'price': row['price'],
                     'volume': row['quantity'],
                     'type': 'Order Book'
                 })
+                levels['orderbook_asks'].append(row['price'])
     
-    # ===== من المؤشرات الفنية =====
+    # ===== من المؤشرات =====
     if df is not None and not df.empty:
         last = df.iloc[-1]
         
-        # من Bollinger Bands
+        # Bollinger Bands
         if 'BB_Lower' in last and not pd.isna(last['BB_Lower']):
-            levels['support'].append({
-                'price': last['BB_Lower'],
-                'volume': 0,
-                'type': 'BB Lower'
-            })
+            levels['support'].append({'price': last['BB_Lower'], 'volume': 0, 'type': 'BB Lower'})
         if 'BB_Upper' in last and not pd.isna(last['BB_Upper']):
-            levels['resistance'].append({
-                'price': last['BB_Upper'],
-                'volume': 0,
-                'type': 'BB Upper'
-            })
+            levels['resistance'].append({'price': last['BB_Upper'], 'volume': 0, 'type': 'BB Upper'})
         
-        # من Pivot Points
-        if 'S1' in last and not pd.isna(last['S1']):
-            levels['support'].append({
-                'price': last['S1'],
-                'volume': 0,
-                'type': 'Pivot S1'
-            })
-        if 'S2' in last and not pd.isna(last['S2']):
-            levels['support'].append({
-                'price': last['S2'],
-                'volume': 0,
-                'type': 'Pivot S2'
-            })
-        if 'R1' in last and not pd.isna(last['R1']):
-            levels['resistance'].append({
-                'price': last['R1'],
-                'volume': 0,
-                'type': 'Pivot R1'
-            })
-        if 'R2' in last and not pd.isna(last['R2']):
-            levels['resistance'].append({
-                'price': last['R2'],
-                'volume': 0,
-                'type': 'Pivot R2'
-            })
+        # Pivot Points
+        for p in ['S1', 'S2', 'S3']:
+            if p in last and not pd.isna(last[p]):
+                levels['support'].append({'price': last[p], 'volume': 0, 'type': f'Pivot {p}'})
+        for p in ['R1', 'R2', 'R3']:
+            if p in last and not pd.isna(last[p]):
+                levels['resistance'].append({'price': last[p], 'volume': 0, 'type': f'Pivot {p}'})
         
-        # من المتوسطات المتحركة
-        for sma in ['SMA_20', 'SMA_50']:
+        # المتوسطات
+        for sma in ['SMA_20', 'SMA_50', 'SMA_100']:
             if sma in last and not pd.isna(last[sma]):
                 if last[sma] < current_price:
-                    levels['support'].append({
-                        'price': last[sma],
-                        'volume': 0,
-                        'type': sma
-                    })
+                    levels['support'].append({'price': last[sma], 'volume': 0, 'type': sma})
                 else:
-                    levels['resistance'].append({
-                        'price': last[sma],
-                        'volume': 0,
-                        'type': sma
-                    })
+                    levels['resistance'].append({'price': last[sma], 'volume': 0, 'type': sma})
     
-    # ===== مناطق الأوامر المعلقة =====
+    # ===== الأوامر المعلقة =====
     if df is not None and not df.empty and 'ATR' in df.columns:
         atr = df['ATR'].iloc[-1] if not pd.isna(df['ATR'].iloc[-1]) else 5
-        levels['pending_buy'].append({
-            'price': current_price - atr * 0.5,
-            'type': 'Pending Buy'
-        })
-        levels['pending_buy'].append({
-            'price': current_price - atr * 1.0,
-            'type': 'Pending Buy'
-        })
-        levels['pending_sell'].append({
-            'price': current_price + atr * 0.5,
-            'type': 'Pending Sell'
-        })
-        levels['pending_sell'].append({
-            'price': current_price + atr * 1.0,
-            'type': 'Pending Sell'
-        })
+        
+        # أوامر شراء معلقة
+        for mult in [0.3, 0.6, 1.0]:
+            levels['pending_buy'].append({
+                'price': current_price - atr * mult,
+                'type': f'Buy {mult*100:.0f}% ATR'
+            })
+        
+        # أوامر بيع معلقة
+        for mult in [0.3, 0.6, 1.0]:
+            levels['pending_sell'].append({
+                'price': current_price + atr * mult,
+                'type': f'Sell {mult*100:.0f}% ATR'
+            })
     
-    # ترتيب وترشيح المستويات
+    # ترتيب المستويات
     levels['support'] = sorted(levels['support'], key=lambda x: x['price'], reverse=True)[:10]
     levels['resistance'] = sorted(levels['resistance'], key=lambda x: x['price'])[:10]
     
     return levels
 
-# ====================== توليد الإشارات التلقائية ======================
-def generate_signals_auto(df, bids, asks, current_price, levels):
-    """توليد إشارات بيع وشراء تلقائياً"""
-    
+# ====================== توليد الإشارات ======================
+def generate_signals(df, bids, asks, current_price, levels):
     signals = {
         'buy': [],
         'sell': [],
@@ -390,14 +383,6 @@ def generate_signals_auto(df, bids, asks, current_price, levels):
             elif last['close'] > last['BB_Upper']:
                 score -= 2
                 reasons.append("🔴 Above Upper Band (Overbought)")
-            
-            # BB Squeeze (مصحح)
-            if 'BB_Width' in last and not pd.isna(last['BB_Width']):
-                if len(df) >= 50:
-                    bb_mean = df['BB_Width'].rolling(50).mean()
-                    if not pd.isna(bb_mean.iloc[-1]):
-                        if last['BB_Width'] < bb_mean.iloc[-1] * 0.7:
-                            reasons.append("⚡ BB Squeeze - Breakout Imminent")
     
     # ===== 4. Stochastic =====
     if 'Stoch_K' in last and 'Stoch_D' in last:
@@ -411,16 +396,7 @@ def generate_signals_auto(df, bids, asks, current_price, levels):
                     score -= 2
                     reasons.append("🔴 Stochastic Bearish Crossover")
     
-    # ===== 5. المتوسطات المتحركة =====
-    if 'SMA_5' in last and 'SMA_20' in last:
-        if not pd.isna(last['SMA_5']) and not pd.isna(last['SMA_20']):
-            if last['SMA_5'] > last['SMA_20'] and prev['SMA_5'] <= prev['SMA_20']:
-                score += 2
-                reasons.append("🟢 Golden Cross (5/20)")
-            elif last['SMA_5'] < last['SMA_20'] and prev['SMA_5'] >= prev['SMA_20']:
-                score -= 2
-                reasons.append("🔴 Death Cross (5/20)")
-    
+    # ===== 5. المتوسطات =====
     if 'SMA_20' in last and 'SMA_50' in last:
         if not pd.isna(last['SMA_20']) and not pd.isna(last['SMA_50']):
             if last['SMA_20'] > last['SMA_50'] and prev['SMA_20'] <= prev['SMA_50']:
@@ -433,24 +409,14 @@ def generate_signals_auto(df, bids, asks, current_price, levels):
     # ===== 6. Ichimoku =====
     if 'Tenkan' in last and 'Kijun' in last:
         if not pd.isna(last['Tenkan']) and not pd.isna(last['Kijun']):
-            if last['Tenkan'] > last['Kijun'] and prev['Tenkan'] <= prev['Kijun']:
+            if last['Tenkan'] > last['Kijun']:
                 score += 1
-                reasons.append("🟢 Ichimoku Bullish Cross")
-            elif last['Tenkan'] < last['Kijun'] and prev['Tenkan'] >= prev['Kijun']:
+                reasons.append("🟢 Tenkan above Kijun (Bullish)")
+            else:
                 score -= 1
-                reasons.append("🔴 Ichimoku Bearish Cross")
+                reasons.append("🔴 Tenkan below Kijun (Bearish)")
     
-    # ===== 7. Volume =====
-    if 'Volume_Ratio' in last and not pd.isna(last['Volume_Ratio']):
-        if last['Volume_Ratio'] > 1.5:
-            if score > 0:
-                score += 1
-                reasons.append("🟢 High Volume Confirms Uptrend")
-            elif score < 0:
-                score -= 1
-                reasons.append("🔴 High Volume Confirms Downtrend")
-    
-    # ===== 8. الأوردر بوك =====
+    # ===== 7. الأوردر بوك =====
     if bids is not None and asks is not None and not bids.empty and not asks.empty:
         total_bid = bids['quantity'].sum()
         total_ask = asks['quantity'].sum()
@@ -463,25 +429,22 @@ def generate_signals_auto(df, bids, asks, current_price, levels):
             score -= 1
             reasons.append(f"🔴 Order Book Bearish (Ratio: {imbalance:.2f})")
     
-    # ===== 9. الدعم والمقاومة =====
+    # ===== 8. الدعم والمقاومة =====
     if levels:
-        # التحقق من الاقتراب من الدعم
         for support in levels['support'][:3]:
             if abs(current_price - support['price']) / current_price < 0.001:
                 score += 1
                 reasons.append(f"🟢 Near Support: ${support['price']:.2f}")
         
-        # التحقق من الاقتراب من المقاومة
         for resistance in levels['resistance'][:3]:
             if abs(current_price - resistance['price']) / current_price < 0.001:
                 score -= 1
                 reasons.append(f"🔴 Near Resistance: ${resistance['price']:.2f}")
     
-    # ===== النتيجة النهائية =====
+    # ===== النتيجة =====
     signals['score'] = score
     signals['reasons'] = reasons
     
-    # ===== تحديد الإشارة =====
     if score >= 6:
         signals['strong_buy'].append(f"🔥 STRONG BUY (Score: {score})")
         signals['recommendation'] = 'STRONG BUY'
@@ -502,9 +465,9 @@ def generate_signals_auto(df, bids, asks, current_price, levels):
     
     return signals
 
-# ====================== رسم الشارت المتقدم ======================
-def create_advanced_chart(df, bids, asks, current_price, levels, signals):
-    """إنشاء شارت متقدم مع الأوردر بوك والدعم والمقاومة"""
+# ====================== شارت TradingView Pro ======================
+def create_tradingview_chart(df, bids, asks, current_price, levels, signals):
+    """شارت احترافي بحال TradingView"""
     
     if df is None or df.empty:
         fig = go.Figure()
@@ -513,18 +476,22 @@ def create_advanced_chart(df, bids, asks, current_price, levels, signals):
     
     # إنشاء الشارت
     fig = make_subplots(
-        rows=3, cols=2,
+        rows=5, cols=2,
         subplot_titles=(
             '📈 Gold Price Chart',
-            '📊 Order Book Depth (Bids/Asks)',
-            '📉 RSI',
+            '📊 Order Book Depth',
+            '📉 RSI (14)',
             '📊 MACD',
-            '📊 Volume Analysis',
-            '🎯 Support & Resistance'
+            '📊 Stochastic',
+            '🎯 Support & Resistance',
+            '📊 Volume',
+            '📈 Ichimoku Cloud',
+            '📊 Market Profile',
+            '💡 Trading Signals'
         ),
-        vertical_spacing=0.08,
-        horizontal_spacing=0.1,
-        row_heights=[0.40, 0.30, 0.30],
+        vertical_spacing=0.06,
+        horizontal_spacing=0.08,
+        row_heights=[0.30, 0.18, 0.16, 0.18, 0.18],
         column_widths=[0.55, 0.45]
     )
 
@@ -547,16 +514,12 @@ def create_advanced_chart(df, bids, asks, current_price, levels, signals):
     )
     
     # ===== المتوسطات =====
-    if 'SMA_20' in df.columns:
-        fig.add_trace(
-            go.Scatter(x=df['timestamp'], y=df['SMA_20'], mode='lines', name='SMA 20', line=dict(color='#FFD700', width=1.5)),
-            row=1, col=1
-        )
-    if 'SMA_50' in df.columns:
-        fig.add_trace(
-            go.Scatter(x=df['timestamp'], y=df['SMA_50'], mode='lines', name='SMA 50', line=dict(color='#FF6B6B', width=1.5)),
-            row=1, col=1
-        )
+    for sma, color in [('SMA_20', '#FFD700'), ('SMA_50', '#FF6B6B'), ('SMA_100', '#87CEEB')]:
+        if sma in df.columns:
+            fig.add_trace(
+                go.Scatter(x=df['timestamp'], y=df[sma], mode='lines', name=sma, line=dict(color=color, width=1.5)),
+                row=1, col=1
+            )
     
     # ===== Bollinger Bands =====
     if 'BB_Upper' in df.columns and 'BB_Lower' in df.columns:
@@ -573,6 +536,34 @@ def create_advanced_chart(df, bids, asks, current_price, levels, signals):
             row=1, col=1
         )
     
+    # ===== Ichimoku على الشارت =====
+    if 'Senkou_A' in df.columns and 'Senkou_B' in df.columns:
+        fig.add_trace(
+            go.Scatter(x=df['timestamp'], y=df['Senkou_A'], mode='lines', name='Senkou A', line=dict(color='#FF6B6B', width=1)),
+            row=1, col=1
+        )
+        fig.add_trace(
+            go.Scatter(x=df['timestamp'], y=df['Senkou_B'], mode='lines', name='Senkou B', line=dict(color='#4ECDC4', width=1)),
+            row=1, col=1
+        )
+        fig.add_trace(
+            go.Scatter(x=df['timestamp'], y=df['Tenkan'], mode='lines', name='Tenkan', line=dict(color='#FFD700', width=1)),
+            row=1, col=1
+        )
+        fig.add_trace(
+            go.Scatter(x=df['timestamp'], y=df['Kijun'], mode='lines', name='Kijun', line=dict(color='#FF6B6B', width=1)),
+            row=1, col=1
+        )
+    
+    # ===== خط السعر الحالي =====
+    fig.add_hline(
+        y=current_price,
+        line_dash="dash",
+        line_color="#FFFFFF",
+        opacity=0.8,
+        row=1, col=1
+    )
+    
     # ===== الدعم والمقاومة على الشارت =====
     if levels:
         # دعم
@@ -587,13 +578,9 @@ def create_advanced_chart(df, bids, asks, current_price, levels, signals):
             fig.add_annotation(
                 x=df['timestamp'].iloc[-1],
                 y=support['price'],
-                text=f"Support ${support['price']:.2f}",
-                showarrow=True,
-                arrowhead=1,
-                arrowsize=1,
-                arrowwidth=2,
-                arrowcolor="green",
-                font=dict(size=10, color="green"),
+                text=f"${support['price']:.2f}",
+                showarrow=False,
+                font=dict(size=9, color="green"),
                 row=1, col=1
             )
         
@@ -609,107 +596,52 @@ def create_advanced_chart(df, bids, asks, current_price, levels, signals):
             fig.add_annotation(
                 x=df['timestamp'].iloc[-1],
                 y=resistance['price'],
-                text=f"Resistance ${resistance['price']:.2f}",
-                showarrow=True,
-                arrowhead=1,
-                arrowsize=1,
-                arrowwidth=2,
-                arrowcolor="red",
-                font=dict(size=10, color="red"),
-                row=1, col=1
-            )
-        
-        # أوامر معلقة
-        for pending in levels['pending_buy'][:3]:
-            fig.add_hline(
-                y=pending['price'],
-                line_dash="dot",
-                line_color="#FFD700",
-                opacity=0.5,
-                row=1, col=1
-            )
-            fig.add_annotation(
-                x=df['timestamp'].iloc[-1],
-                y=pending['price'],
-                text=f"Pending Buy ${pending['price']:.2f}",
+                text=f"${resistance['price']:.2f}",
                 showarrow=False,
-                font=dict(size=9, color="#FFD700"),
-                row=1, col=1
-            )
-        
-        for pending in levels['pending_sell'][:3]:
-            fig.add_hline(
-                y=pending['price'],
-                line_dash="dot",
-                line_color="#FF6B6B",
-                opacity=0.5,
-                row=1, col=1
-            )
-            fig.add_annotation(
-                x=df['timestamp'].iloc[-1],
-                y=pending['price'],
-                text=f"Pending Sell ${pending['price']:.2f}",
-                showarrow=False,
-                font=dict(size=9, color="#FF6B6B"),
+                font=dict(size=9, color="red"),
                 row=1, col=1
             )
     
-    # ===== إشارات البيع/الشراء على الشارت =====
+    # ===== إشارة على الشارت =====
     if signals['score'] >= 3:
         fig.add_annotation(
             x=df['timestamp'].iloc[-1],
-            y=df['high'].iloc[-1] * 1.005,
+            y=df['high'].iloc[-1] * 1.01,
             text=f"🟢 BUY ({signals['score']})",
             showarrow=True,
             arrowhead=2,
             arrowsize=2,
             arrowwidth=3,
             arrowcolor="#00ff00",
-            font=dict(size=16, color="#00ff00", family="Arial Black"),
+            font=dict(size=18, color="#00ff00", family="Arial Black"),
             row=1, col=1
         )
     elif signals['score'] <= -3:
         fig.add_annotation(
             x=df['timestamp'].iloc[-1],
-            y=df['high'].iloc[-1] * 1.005,
+            y=df['high'].iloc[-1] * 1.01,
             text=f"🔴 SELL ({signals['score']})",
             showarrow=True,
             arrowhead=2,
             arrowsize=2,
             arrowwidth=3,
             arrowcolor="#ff0000",
-            font=dict(size=16, color="#ff0000", family="Arial Black"),
+            font=dict(size=18, color="#ff0000", family="Arial Black"),
             row=1, col=1
         )
     
     # ===== الصف 1 - العمود 2: الأوردر بوك =====
     if bids is not None and asks is not None and not bids.empty and not asks.empty:
-        # Bids
         fig.add_trace(
-            go.Bar(
-                x=bids['price'],
-                y=bids['quantity'],
-                name='Bids',
-                marker_color='#00ff00',
-                opacity=0.8,
-                showlegend=True
-            ),
+            go.Bar(x=bids['price'], y=bids['quantity'], name='Bids', marker_color='#00ff00', opacity=0.8),
             row=1, col=2
         )
-        # Asks
         fig.add_trace(
-            go.Bar(
-                x=asks['price'],
-                y=asks['quantity'],
-                name='Asks',
-                marker_color='#ff0000',
-                opacity=0.8,
-                showlegend=True
-            ),
+            go.Bar(x=asks['price'], y=asks['quantity'], name='Asks', marker_color='#ff0000', opacity=0.8),
             row=1, col=2
         )
         
-        # خط السعر الحالي
+        # خط السعر على الأوردر بوك
         fig.add_vline(
             x=current_price,
             line_dash="dash",
@@ -745,37 +677,34 @@ def create_advanced_chart(df, bids, asks, current_price, levels, signals):
             row=2, col=2
         )
     
-    # ===== الصف 3 - العمود 1: Volume =====
-    if 'volume' in df.columns:
-        colors = ['#00ff00' if df['close'].iloc[i] >= df['open'].iloc[i] else '#ff0000' for i in range(len(df))]
+    # ===== الصف 3 - العمود 1: Stochastic =====
+    if 'Stoch_K' in df.columns and 'Stoch_D' in df.columns:
         fig.add_trace(
-            go.Bar(x=df['timestamp'], y=df['volume'], name='Volume', marker_color=colors, opacity=0.7),
+            go.Scatter(x=df['timestamp'], y=df['Stoch_K'], mode='lines', name='Stoch K', line=dict(color='#FFD700', width=2)),
             row=3, col=1
         )
-        if 'Volume_SMA' in df.columns:
-            fig.add_trace(
-                go.Scatter(x=df['timestamp'], y=df['Volume_SMA'], mode='lines', name='Vol SMA', line=dict(color='#FFD700', width=1.5)),
-                row=3, col=1
-            )
+        fig.add_trace(
+            go.Scatter(x=df['timestamp'], y=df['Stoch_D'], mode='lines', name='Stoch D', line=dict(color='#FF6B6B', width=2)),
+            row=3, col=1
+        )
+        fig.add_hline(y=80, line_dash="dash", line_color="red", row=3, col=1)
+        fig.add_hline(y=20, line_dash="dash", line_color="green", row=3, col=1)
     
     # ===== الصف 3 - العمود 2: الدعم والمقاومة التفصيلية =====
     if levels:
-        # دعم
         support_text = "🟢 Support Levels:\n"
-        for i, s in enumerate(levels['support'][:5]):
-            support_text += f"  ${s['price']:.2f} ({s['type']})\n"
+        for s in levels['support'][:5]:
+            support_text += f"  💰 ${s['price']:.2f} ({s['type']})\n"
         
-        # مقاومة
         resistance_text = "🔴 Resistance Levels:\n"
-        for i, r in enumerate(levels['resistance'][:5]):
-            resistance_text += f"  ${r['price']:.2f} ({r['type']})\n"
+        for r in levels['resistance'][:5]:
+            resistance_text += f"  💰 ${r['price']:.2f} ({r['type']})\n"
         
-        # أوامر معلقة
         pending_text = "🟡 Pending Orders:\n"
         for p in levels['pending_buy'][:3]:
-            pending_text += f"  Buy ${p['price']:.2f}\n"
+            pending_text += f"  🔼 Buy ${p['price']:.2f}\n"
         for p in levels['pending_sell'][:3]:
-            pending_text += f"  Sell ${p['price']:.2f}\n"
+            pending_text += f"  🔽 Sell ${p['price']:.2f}\n"
         
         fig.add_annotation(
             text=f"{support_text}\n{resistance_text}\n{pending_text}",
@@ -784,17 +713,111 @@ def create_advanced_chart(df, bids, asks, current_price, levels, signals):
             x=0.5,
             y=0.5,
             showarrow=False,
-            font=dict(size=12, color="white"),
+            font=dict(size=11, color="white", family="monospace"),
             align="left",
             row=3, col=2
         )
     
+    # ===== الصف 4 - العمود 1: Volume =====
+    if 'volume' in df.columns:
+        colors = ['#00ff00' if df['close'].iloc[i] >= df['open'].iloc[i] else '#ff0000' for i in range(len(df))]
+        fig.add_trace(
+            go.Bar(x=df['timestamp'], y=df['volume'], name='Volume', marker_color=colors, opacity=0.7),
+            row=4, col=1
+        )
+        if 'Volume_SMA' in df.columns:
+            fig.add_trace(
+                go.Scatter(x=df['timestamp'], y=df['Volume_SMA'], mode='lines', name='Vol SMA', line=dict(color='#FFD700', width=1.5)),
+                row=4, col=1
+            )
+    
+    # ===== الصف 4 - العمود 2: Ichimoku Cloud =====
+    if 'Senkou_A' in df.columns and 'Senkou_B' in df.columns:
+        fig.add_trace(
+            go.Scatter(x=df['timestamp'], y=df['Senkou_A'], mode='lines', name='Senkou A', line=dict(color='#FF6B6B', width=1.5)),
+            row=4, col=2
+        )
+        fig.add_trace(
+            go.Scatter(x=df['timestamp'], y=df['Senkou_B'], mode='lines', name='Senkou B', line=dict(color='#4ECDC4', width=1.5)),
+            row=4, col=2
+        )
+        fig.add_trace(
+            go.Scatter(x=df['timestamp'], y=df['Tenkan'], mode='lines', name='Tenkan', line=dict(color='#FFD700', width=1)),
+            row=4, col=2
+        )
+        fig.add_trace(
+            go.Scatter(x=df['timestamp'], y=df['Kijun'], mode='lines', name='Kijun', line=dict(color='#FF6B6B', width=1)),
+            row=4, col=2
+        )
+    
+    # ===== الصف 5 - العمود 1: Market Profile =====
+    if 'close' in df.columns and 'volume' in df.columns:
+        fig.add_trace(
+            go.Scatter(
+                x=df['close'],
+                y=df['volume'],
+                mode='markers',
+                name='Market Profile',
+                marker=dict(
+                    size=df['volume'] / df['volume'].max() * 30,
+                    color=df['volume'],
+                    colorscale='Viridis',
+                    showscale=True,
+                    colorbar=dict(title="Volume", x=0.48)
+                ),
+                hovertemplate='Price: $%{x:.2f}<br>Volume: %{y:.2f}<extra></extra>'
+            ),
+            row=5, col=1
+        )
+    
+    # ===== الصف 5 - العمود 2: ملخص الإشارات =====
+    score = signals['score']
+    recommendation = signals['recommendation']
+    
+    if recommendation == 'STRONG BUY':
+        signal_color = '#00ff00'
+        bg_color = 'rgba(0, 255, 0, 0.1)'
+    elif recommendation == 'BUY':
+        signal_color = '#66ff66'
+        bg_color = 'rgba(0, 255, 0, 0.05)'
+    elif recommendation == 'STRONG SELL':
+        signal_color = '#ff0000'
+        bg_color = 'rgba(255, 0, 0, 0.1)'
+    elif recommendation == 'SELL':
+        signal_color = '#ff6666'
+        bg_color = 'rgba(255, 0, 0, 0.05)'
+    else:
+        signal_color = '#888888'
+        bg_color = 'rgba(255, 255, 255, 0.05)'
+    
+    # عرض الإشارات
+    text = f"🎯 SIGNAL: {recommendation}\nScore: {score}\n\n"
+    
+    if signals['reasons']:
+        for reason in signals['reasons'][:5]:
+            text += f"{reason}\n"
+    
+    fig.add_annotation(
+        text=text,
+        xref="x5 domain",
+        yref="y5 domain",
+        x=0.5,
+        y=0.5,
+        showarrow=False,
+        font=dict(size=12, color=signal_color, family="monospace"),
+        align="left",
+        bgcolor=bg_color,
+        bordercolor=signal_color,
+        borderwidth=2,
+        row=5, col=2
+    )
+    
     # ===== تحديث التصميم =====
     fig.update_layout(
-        height=1200,
+        height=1600,
         template='plotly_dark',
-        title_text=f'🥇 Gold (XAUUSD) - Live Trading Dashboard | Price: ${current_price:.2f}' if current_price else '🥇 Gold (XAUUSD) - Live Trading Dashboard',
-        title_font=dict(size=24, color='#FFD700'),
+        title_text=f'🥇 Gold (XAUUSD) - TradingView Pro | Price: ${current_price:.2f}' if current_price else '🥇 Gold (XAUUSD) - TradingView Pro',
+        title_font=dict(size=28, color='#FFD700'),
         showlegend=True,
         legend=dict(
             orientation="h",
@@ -804,11 +827,13 @@ def create_advanced_chart(df, bids, asks, current_price, levels, signals):
             x=1,
             bgcolor='rgba(0,0,0,0.7)'
         ),
-        hovermode='x unified'
+        hovermode='x unified',
+        paper_bgcolor='rgba(0,0,0,0)',
+        plot_bgcolor='rgba(0,0,0,0.1)'
     )
     
     # تحديث المحاور
-    for row in range(1, 4):
+    for row in range(1, 6):
         for col in range(1, 3):
             fig.update_xaxes(gridcolor='rgba(255,255,255,0.05)', row=row, col=col)
             fig.update_yaxes(gridcolor='rgba(255,255,255,0.05)', row=row, col=col)
@@ -816,12 +841,11 @@ def create_advanced_chart(df, bids, asks, current_price, levels, signals):
     return fig
 
 # ====================== عرض الإشارات المتقدم ======================
-def display_advanced_signals(signals, current_price, levels):
+def display_signals(signals, current_price, levels):
     """عرض الإشارات بشكل متقدم"""
     
     st.markdown("## 🎯 Trading Signals (Auto-Update)")
     
-    # عرض الإشارة الرئيسية
     score = signals['score']
     recommendation = signals['recommendation']
     
@@ -829,30 +853,35 @@ def display_advanced_signals(signals, current_price, levels):
         bg_class = "signal-strong-buy"
         icon = "🔥"
         text = "STRONG BUY"
+        color = "#00ff00"
     elif recommendation == 'BUY':
         bg_class = "signal-buy"
         icon = "📈"
         text = "BUY"
+        color = "#00ff00"
     elif recommendation == 'STRONG SELL':
         bg_class = "signal-strong-sell"
         icon = "🔥"
         text = "STRONG SELL"
+        color = "#ff0000"
     elif recommendation == 'SELL':
         bg_class = "signal-sell"
         icon = "📉"
         text = "SELL"
+        color = "#ff0000"
     else:
         bg_class = "signal-neutral"
         icon = "⏸️"
         text = "NEUTRAL"
+        color = "#888888"
     
-    # عرض الإشارة
+    # عرض الإشارة الرئيسية
     st.markdown(f"""
     <div class="signal-box {bg_class}">
-        <h1 style="margin: 0;">{icon} {text}</h1>
-        <p style="margin: 5px 0; font-size: 18px;">Signal Score: {score}</p>
-        <p style="margin: 0; font-size: 14px; opacity: 0.7;">
-            Current Price: ${current_price:.2f}
+        <h1 style="margin: 0; font-size: 42px;">{icon} {text}</h1>
+        <p style="margin: 5px 0; font-size: 20px;">Signal Score: <strong>{score}</strong></p>
+        <p style="margin: 0; font-size: 16px; opacity: 0.8;">
+            💰 Current Price: <strong>${current_price:.2f}</strong>
         </p>
     </div>
     """, unsafe_allow_html=True)
@@ -884,8 +913,9 @@ def display_advanced_signals(signals, current_price, levels):
             st.markdown("### 🟢 Support")
             for support in levels['support'][:5]:
                 st.markdown(f"""
-                <div class="level-box support">
-                    <b>${support['price']:.2f}</b> - {support['type']}
+                <div class="level-card support-level">
+                    <span class="level-price">${support['price']:.2f}</span>
+                    <span class="level-type">{support['type']}</span>
                 </div>
                 """, unsafe_allow_html=True)
         
@@ -893,8 +923,9 @@ def display_advanced_signals(signals, current_price, levels):
             st.markdown("### 🔴 Resistance")
             for resistance in levels['resistance'][:5]:
                 st.markdown(f"""
-                <div class="level-box resistance">
-                    <b>${resistance['price']:.2f}</b> - {resistance['type']}
+                <div class="level-card resistance-level">
+                    <span class="level-price">${resistance['price']:.2f}</span>
+                    <span class="level-type">{resistance['type']}</span>
                 </div>
                 """, unsafe_allow_html=True)
         
@@ -902,48 +933,59 @@ def display_advanced_signals(signals, current_price, levels):
             st.markdown("### 🟡 Pending Orders")
             for pending in levels['pending_buy'][:3]:
                 st.markdown(f"""
-                <div class="level-box pending">
-                    🔼 Buy: ${pending['price']:.2f}
+                <div class="level-card pending-level">
+                    <span>🔼 Buy: <span class="level-price">${pending['price']:.2f}</span></span>
+                    <span class="level-type">{pending['type']}</span>
                 </div>
                 """, unsafe_allow_html=True)
             for pending in levels['pending_sell'][:3]:
                 st.markdown(f"""
-                <div class="level-box pending">
-                    🔽 Sell: ${pending['price']:.2f}
+                <div class="level-card pending-level">
+                    <span>🔽 Sell: <span class="level-price">${pending['price']:.2f}</span></span>
+                    <span class="level-type">{pending['type']}</span>
                 </div>
                 """, unsafe_allow_html=True)
     
     st.divider()
     
     # ===== نصائح التداول =====
-    st.markdown("## 💡 Trading Tips")
-    
-    tips = []
+    st.markdown("## 💡 Trading Recommendations")
     
     if score >= 3:
-        tips.append("🟢 **Strong Buy Signal** - Consider entering long position")
-        tips.append("✅ Set Stop Loss below nearest support level")
-        tips.append("🎯 Take Profit at next resistance level")
+        st.success("""
+        🟢 **BUY Recommendation**
+        - Enter long position with stop loss below nearest support
+        - Take profit at next resistance level
+        - Consider trailing stop loss
+        """)
     elif score <= -3:
-        tips.append("🔴 **Strong Sell Signal** - Consider entering short position")
-        tips.append("✅ Set Stop Loss above nearest resistance level")
-        tips.append("🎯 Take Profit at next support level")
+        st.error("""
+        🔴 **SELL Recommendation**
+        - Enter short position with stop loss above nearest resistance
+        - Take profit at next support level
+        - Consider trailing stop loss
+        """)
     else:
-        tips.append("⏸️ **Neutral** - Wait for clearer signal")
-        tips.append("📊 Monitor price action at support/resistance levels")
-        tips.append("🔍 Wait for confirmation before entering")
-    
-    for tip in tips:
-        st.info(tip)
+        st.info("""
+        ⏸️ **NEUTRAL Recommendation**
+        - Wait for clearer signal
+        - Monitor price action at key levels
+        - Look for confirmation before entering
+        """)
 
 # ====================== الواجهة الرئيسية ======================
 def main():
     # العنوان
     st.markdown("""
-    <div style="text-align: center; padding: 1.5rem; background: linear-gradient(135deg, #1a1a2e, #16213e); border-radius: 15px; margin-bottom: 1.5rem; border: 2px solid #FFD700;">
-        <h1 style="color: #FFD700; margin: 0;">🥇 Gold Trading Pro</h1>
-        <p style="color: #aaa; margin: 5px 0;">📊 Live Signals | Auto-Update | Real Data</p>
-        <p style="color: #00ff00; font-size: 12px;">🟢 LIVE - Updates every 5 seconds</p>
+    <div class="main-title">
+        <h1>🥇 Gold Trading Pro</h1>
+        <p style="color: #aaa; margin: 5px 0;">
+            📊 TradingView Style Chart | Real-time Signals | Order Book Analysis
+        </p>
+        <p style="margin: 10px 0;">
+            <span class="live-badge">🔴 LIVE</span>
+            <span style="color: #aaa; margin-left: 10px;">Updates every 5 seconds</span>
+        </p>
     </div>
     """, unsafe_allow_html=True)
     
@@ -955,49 +997,47 @@ def main():
             current_price = 3315.50
         
         # جلب الأوردر بوك
-        bids, asks = get_order_book_real()
+        bids, asks = get_order_book_real(150)
         if bids is None or asks is None:
-            # توليد بيانات تجريبية واقعية
             bids = pd.DataFrame({
-                'price': [current_price - i * 0.15 for i in range(50)],
-                'quantity': [np.random.randint(10, 100) for _ in range(50)]
+                'price': [current_price - i * 0.15 for i in range(100)],
+                'quantity': [np.random.randint(10, 100) for _ in range(100)]
             })
             asks = pd.DataFrame({
-                'price': [current_price + i * 0.15 for i in range(50)],
-                'quantity': [np.random.randint(10, 100) for _ in range(50)]
+                'price': [current_price + i * 0.15 for i in range(100)],
+                'quantity': [np.random.randint(10, 100) for _ in range(100)]
             })
         
         # جلب بيانات الشموع
-        df = get_klines_data(200)
+        df = get_klines_data(300)
         if df is None or df.empty:
-            # توليد بيانات تجريبية
-            dates = pd.date_range(end=datetime.now(), periods=200, freq='1min')
+            dates = pd.date_range(end=datetime.now(), periods=300, freq='1min')
             price = current_price - 20
             data = []
-            for i in range(200):
-                change = np.random.randn() * 0.15
+            for i in range(300):
+                change = np.random.randn() * 0.12
                 price += change
                 data.append([
-                    dates[i], price, price + 0.2, price - 0.2, price + np.random.randn() * 0.1,
-                    np.random.randint(100, 1000)
+                    dates[i], price, price + 0.15, price - 0.15, 
+                    price + np.random.randn() * 0.08, np.random.randint(100, 1000)
                 ])
             df = pd.DataFrame(data, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
         
         # حساب المؤشرات
         df = calculate_indicators(df)
         
-        # حساب الدعم والمقاومة
-        levels = calculate_support_resistance(df, bids, asks, current_price)
+        # حساب المستويات
+        levels = calculate_levels(df, bids, asks, current_price)
         
         # توليد الإشارات
-        signals = generate_signals_auto(df, bids, asks, current_price, levels)
+        signals = generate_signals(df, bids, asks, current_price, levels)
     
     # ===== عرض الإشارات =====
-    display_advanced_signals(signals, current_price, levels)
+    display_signals(signals, current_price, levels)
     
     # ===== عرض الشارت =====
-    st.subheader("📈 Professional Chart")
-    fig = create_advanced_chart(df, bids, asks, current_price, levels, signals)
+    st.subheader("📈 Professional Chart (TradingView Style)")
+    fig = create_tradingview_chart(df, bids, asks, current_price, levels, signals)
     st.plotly_chart(fig, use_container_width=True)
     
     st.divider()
@@ -1011,35 +1051,20 @@ def main():
         with col1:
             st.markdown("### 🟢 Bids (Buy Orders)")
             st.dataframe(
-                bids.head(20).style.format({'price': '${:.2f}', 'quantity': '{:.2f}'}),
+                bids.head(30).style.format({'price': '${:.2f}', 'quantity': '{:.2f}'}),
                 use_container_width=True,
-                height=400
+                height=500
             )
-            st.metric("Total Bid Volume", f"{bids['quantity'].sum():.2f}")
+            st.metric("Total Bid Volume", f"{bids['quantity'].sum():,.2f}")
         
         with col2:
             st.markdown("### 🔴 Asks (Sell Orders)")
             st.dataframe(
-                asks.head(20).style.format({'price': '${:.2f}', 'quantity': '{:.2f}'}),
+                asks.head(30).style.format({'price': '${:.2f}', 'quantity': '{:.2f}'}),
                 use_container_width=True,
-                height=400
+                height=500
             )
-            st.metric("Total Ask Volume", f"{asks['quantity'].sum():.2f}")
-        
-        # تحليل الأوردر بوك
-        if not bids.empty and not asks.empty:
-            st.markdown("### 📈 Order Book Analysis")
-            total_bid = bids['quantity'].sum()
-            total_ask = asks['quantity'].sum()
-            imbalance = total_bid / (total_ask + 0.001)
-            
-            col1, col2, col3 = st.columns(3)
-            with col1:
-                st.metric("Bid/Ask Imbalance", f"{imbalance:.2f}")
-            with col2:
-                st.metric("Total Bid", f"{total_bid:.2f}")
-            with col3:
-                st.metric("Total Ask", f"{total_ask:.2f}")
+            st.metric("Total Ask Volume", f"{asks['quantity'].sum():,.2f}")
     
     # ===== تحديث تلقائي =====
     st.caption("🔄 Auto-updates every 5 seconds...")
