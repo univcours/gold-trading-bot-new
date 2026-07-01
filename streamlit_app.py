@@ -299,7 +299,6 @@ def calculate_support_resistance(df, bids, asks, current_price):
                     })
     
     # ===== مناطق الأوامر المعلقة =====
-    # شراء معلق (أسفل السعر الحالي بفارق ATR)
     if df is not None and not df.empty and 'ATR' in df.columns:
         atr = df['ATR'].iloc[-1] if not pd.isna(df['ATR'].iloc[-1]) else 5
         levels['pending_buy'].append({
@@ -392,10 +391,13 @@ def generate_signals_auto(df, bids, asks, current_price, levels):
                 score -= 2
                 reasons.append("🔴 Above Upper Band (Overbought)")
             
-            # BB Squeeze
+            # BB Squeeze (مصحح)
             if 'BB_Width' in last and not pd.isna(last['BB_Width']):
-                if last['BB_Width'] < df['BB_Width'].rolling(50).mean() * 0.7:
-                    reasons.append("⚡ BB Squeeze - Breakout Imminent")
+                if len(df) >= 50:
+                    bb_mean = df['BB_Width'].rolling(50).mean()
+                    if not pd.isna(bb_mean.iloc[-1]):
+                        if last['BB_Width'] < bb_mean.iloc[-1] * 0.7:
+                            reasons.append("⚡ BB Squeeze - Breakout Imminent")
     
     # ===== 4. Stochastic =====
     if 'Stoch_K' in last and 'Stoch_D' in last:
