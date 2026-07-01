@@ -17,10 +17,9 @@ st.set_page_config(
 
 # ====================== دوال جلب البيانات الحقيقية ======================
 @st.cache_data(ttl=10)
-def get_klines(symbol="XAUUSDT", interval="1m", limit=100):
+def get_klines(symbol="PAXGUSDT", interval="1m", limit=100):
     """جلب بيانات الشموع الحقيقية من Binance"""
     try:
-        # استعمال API ديال Binance الرسمي
         url = "https://api.binance.com/api/v3/klines"
         params = {
             "symbol": symbol,
@@ -55,15 +54,12 @@ def get_klines(symbol="XAUUSDT", interval="1m", limit=100):
             st.warning(f"⚠️ API Binance مشغول (Status: {response.status_code})، نستعمل بيانات تجريبية")
             return generate_mock_data(limit)
             
-    except requests.exceptions.Timeout:
-        st.warning("⚠️ الوقت انتهى في الاتصال بـ Binance، نستعمل بيانات تجريبية")
-        return generate_mock_data(limit)
     except Exception as e:
         st.warning(f"⚠️ خطأ في الاتصال: {str(e)}، نستعمل بيانات تجريبية")
         return generate_mock_data(limit)
 
 @st.cache_data(ttl=5)
-def get_order_book(symbol="XAUUSDT", limit=50):
+def get_order_book(symbol="PAXGUSDT", limit=50):
     """جلب الأوردر بوك الحقيقي من Binance"""
     try:
         url = "https://api.binance.com/api/v3/depth"
@@ -90,11 +86,9 @@ def get_order_book(symbol="XAUUSDT", limit=50):
             if len(bids) == 0 or len(asks) == 0:
                 return generate_mock_order_book(limit)
             
-            # إضافة عمود المجموع التراكمي
             bids['cumulative'] = bids['quantity'].cumsum()
             asks['cumulative'] = asks['quantity'].cumsum()
             
-            # إضافة عمود النسبة المئوية للحجم
             total_bid_vol = bids['quantity'].sum()
             total_ask_vol = asks['quantity'].sum()
             bids['volume_percent'] = (bids['quantity'] / total_bid_vol * 100) if total_bid_vol > 0 else 0
@@ -108,12 +102,11 @@ def get_order_book(symbol="XAUUSDT", limit=50):
         return generate_mock_order_book(limit)
 
 @st.cache_data(ttl=5)
-def get_current_price(symbol="XAUUSDT"):
+def get_current_price(symbol="PAXGUSDT"):
     """جلب السعر الحالي للذهب من Binance"""
     try:
         url = "https://api.binance.com/api/v3/ticker/price"
         params = {"symbol": symbol}
-        
         headers = {"User-Agent": "Mozilla/5.0"}
         
         response = requests.get(url, params=params, headers=headers, timeout=5)
@@ -122,19 +115,15 @@ def get_current_price(symbol="XAUUSDT"):
             data = response.json()
             if 'price' in data:
                 return float(data['price'])
-            else:
-                return None
-        else:
             return None
+        return None
             
     except Exception as e:
         return None
 
 def generate_mock_data(limit=100):
-    """توليد بيانات تجريبية (فقط عند فشل الاتصال)"""
     dates = pd.date_range(end=datetime.now(), periods=limit, freq='1min')
-    # نستعمل سعر قريب من السعر الحقيقي
-    base_price = 3300 + np.random.randn() * 10
+    base_price = 2300 + np.random.randn() * 10
     
     data = []
     for i in range(limit):
@@ -147,13 +136,10 @@ def generate_mock_data(limit=100):
         volume = np.random.randint(50, 500)
         data.append([dates[i], open_p, high_p, low_p, close_p, volume])
     
-    df = pd.DataFrame(data, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
-    return df
+    return pd.DataFrame(data, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
 
 def generate_mock_order_book(limit=50):
-    """توليد بيانات تجريبية للأوردر بوك (فقط عند فشل الاتصال)"""
-    # نستعمل سعر قريب من السعر الحقيقي
-    base_price = 3300 + np.random.randn() * 2
+    base_price = 2300 + np.random.randn() * 2
     
     bids = pd.DataFrame({
         'price': [base_price - i * 0.15 for i in range(limit)],
@@ -177,8 +163,6 @@ def generate_mock_order_book(limit=50):
 
 # ====================== دوال الرسم ======================
 def create_candlestick_chart(df, bids, asks):
-    """إنشاء شارت الشموع اليابانية"""
-    
     if df.empty:
         return go.Figure()
     
@@ -195,7 +179,6 @@ def create_candlestick_chart(df, bids, asks):
         row_heights=[0.6, 0.4]
     )
 
-    # الشموع اليابانية
     fig.add_trace(
         go.Candlestick(
             x=df['timestamp'],
@@ -211,7 +194,6 @@ def create_candlestick_chart(df, bids, asks):
         row=1, col=1
     )
     
-    # المتوسطات المتحركة
     if len(df) >= 20:
         df['SMA_20'] = df['close'].rolling(20).mean()
         fig.add_trace(
@@ -238,7 +220,6 @@ def create_candlestick_chart(df, bids, asks):
             row=1, col=1
         )
     
-    # الأوردر بوك
     if not bids.empty and not asks.empty:
         fig.add_trace(
             go.Bar(
@@ -264,7 +245,6 @@ def create_candlestick_chart(df, bids, asks):
             row=1, col=2
         )
 
-    # الحجم
     colors = ['#00ff00' if df['close'].iloc[i] >= df['open'].iloc[i] else '#ff0000' 
               for i in range(len(df))]
     
@@ -280,7 +260,6 @@ def create_candlestick_chart(df, bids, asks):
         row=2, col=1
     )
     
-    # الحجم التراكمي
     if not bids.empty and not asks.empty:
         fig.add_trace(
             go.Scatter(
@@ -311,7 +290,7 @@ def create_candlestick_chart(df, bids, asks):
     fig.update_layout(
         height=800,
         template='plotly_dark',
-        title_text='📊 XAUUSDT - Live Trading Dashboard',
+        title_text='📊 PAXGUSDT (Gold) - Live Trading Dashboard',
         title_font=dict(size=24, color='white'),
         showlegend=True,
         legend=dict(
@@ -339,8 +318,6 @@ def create_candlestick_chart(df, bids, asks):
 
 # ====================== عرض الأوردر بوك التفصيلي ======================
 def display_detailed_order_book(bids, asks):
-    """عرض الأوردر بوك بشكل تفصيلي"""
-    
     if bids.empty or asks.empty:
         st.warning("⚠️ لا توجد بيانات للأوردر بوك")
         return
@@ -352,14 +329,14 @@ def display_detailed_order_book(bids, asks):
     with col1:
         st.markdown("### 🟢 Bids (Buy Orders)")
         st.dataframe(
-            bids.head(20).style.format({'price': '${:.2f}', 'quantity': '{:.2f}', 'volume_percent': '{:.2f}%'}),
+            bids.head(20).style.format({'price': '${:.2f}', 'quantity': '{:.4f}', 'volume_percent': '{:.2f}%'}),
             use_container_width=True,
             height=400
         )
         
         col1a, col1b, col1c = st.columns(3)
         with col1a:
-            st.metric("Total Bid Volume", f"{bids['quantity'].sum():.2f}")
+            st.metric("Total Bid Vol", f"{bids['quantity'].sum():.2f}")
         with col1b:
             st.metric("Best Bid", f"${bids['price'].iloc[0]:.2f}")
         with col1c:
@@ -368,20 +345,19 @@ def display_detailed_order_book(bids, asks):
     with col2:
         st.markdown("### 🔴 Asks (Sell Orders)")
         st.dataframe(
-            asks.head(20).style.format({'price': '${:.2f}', 'quantity': '{:.2f}', 'volume_percent': '{:.2f}%'}),
+            asks.head(20).style.format({'price': '${:.2f}', 'quantity': '{:.4f}', 'volume_percent': '{:.2f}%'}),
             use_container_width=True,
             height=400
         )
         
         col2a, col2b, col2c = st.columns(3)
         with col2a:
-            st.metric("Total Ask Volume", f"{asks['quantity'].sum():.2f}")
+            st.metric("Total Ask Vol", f"{asks['quantity'].sum():.2f}")
         with col2b:
             st.metric("Best Ask", f"${asks['price'].iloc[0]:.2f}")
         with col2c:
             st.metric("Ask Levels", len(asks))
     
-    # عرض تحليل الفروقات
     st.markdown("### 📈 Spread Analysis")
     spread = asks['price'].iloc[0] - bids['price'].iloc[0]
     spread_percent = (spread / ((bids['price'].iloc[0] + asks['price'].iloc[0]) / 2)) * 100
@@ -394,7 +370,6 @@ def display_detailed_order_book(bids, asks):
     with col5:
         st.metric("Mid Price", f"${(bids['price'].iloc[0] + asks['price'].iloc[0]) / 2:.2f}")
     
-    # عرض أكبر المستويات حجماً
     st.markdown("### 🎯 Largest Order Levels")
     col6, col7 = st.columns(2)
     
@@ -410,15 +385,12 @@ def display_detailed_order_book(bids, asks):
 
 # ====================== إحصائيات السوق ======================
 def display_market_stats(df, bids, asks, current_price):
-    """عرض إحصائيات السوق"""
-    
     st.subheader("📈 Live Market Statistics")
     
     if df.empty:
         st.warning("⚠️ لا توجد بيانات")
         return
     
-    # نستعمل السعر الحقيقي إذا كان موجود
     if current_price:
         price = current_price
         price_change = ((current_price - df['open'].iloc[0]) / df['open'].iloc[0] * 100)
@@ -429,10 +401,10 @@ def display_market_stats(df, bids, asks, current_price):
     col1, col2, col3, col4 = st.columns(4)
     
     with col1:
-        st.metric("💰 Gold Price", f"${price:.2f}", f"{price_change:+.2f}%")
+        st.metric("💰 PAXG Price (Gold)", f"${price:.2f}", f"{price_change:+.2f}%")
     
     with col2:
-        st.metric("📊 Volume", f"${df['volume'].sum():,.0f}")
+        st.metric("📊 Volume", f"{df['volume'].sum():,.2f}")
     
     with col3:
         if not bids.empty and not asks.empty:
@@ -443,12 +415,11 @@ def display_market_stats(df, bids, asks, current_price):
     
     with col4:
         if not bids.empty and not asks.empty:
-            ratio = bids['quantity'].sum() / (asks['quantity'].sum() + 1)
+            ratio = bids['quantity'].sum() / (asks['quantity'].sum() + 1e-8)
             st.metric("⚖️ B/A Ratio", f"{ratio:.2f}")
         else:
             st.metric("⚖️ B/A Ratio", "N/A")
     
-    # عرض معلومات إضافية
     if not df.empty:
         col5, col6, col7, col8 = st.columns(4)
         with col5:
@@ -463,12 +434,10 @@ def display_market_stats(df, bids, asks, current_price):
 
 # ====================== الواجهة الرئيسية ======================
 def main():
-    # عنوان التطبيق
     st.title("🏆 Professional Gold Trading Bot")
-    st.markdown("### 🔥 Live XAUUSDT Analysis with Real-time Order Book")
+    st.markdown("### 🔥 Live PAXGUSDT (Gold) Analysis with Real-time Order Book")
     st.markdown("---")
     
-    # ===== الشريط الجانبي =====
     with st.sidebar:
         st.header("⚙️ Trading Settings")
         
@@ -505,49 +474,41 @@ def main():
             st.cache_data.clear()
             st.rerun()
     
-    # ===== جلب البيانات =====
     with st.spinner("🔄 Loading market data..."):
         try:
-            # جلب السعر الحقيقي أولاً
-            current_price = get_current_price("XAUUSDT")
+            current_price = get_current_price("PAXGUSDT")
             
             if current_price:
-                st.success(f"✅ السعر الحقيقي: ${current_price:.2f}")
+                st.success(f"✅ السعر الحقيقي لـ PAXG: ${current_price:.2f}")
             else:
                 st.warning("⚠️ جاري استعمال بيانات تجريبية")
             
-            # جلب بيانات الشموع
-            df = get_klines("XAUUSDT", timeframe, candle_limit)
+            df = get_klines("PAXGUSDT", timeframe, candle_limit)
             
             if df.empty:
                 df = generate_mock_data(candle_limit)
             
-            # جلب الأوردر بوك
-            bids, asks = get_order_book("XAUUSDT", depth_levels)
+            bids, asks = get_order_book("PAXGUSDT", depth_levels)
             
             if bids.empty or asks.empty:
                 bids, asks = generate_mock_order_book(depth_levels)
-            
+                
         except Exception as e:
             st.error(f"❌ Error: {str(e)}")
             return
     
-    # ===== عرض البيانات =====
     display_market_stats(df, bids, asks, current_price)
     
     st.divider()
     
-    # عرض الشارت
     st.subheader("📈 Live Candlestick Chart")
     fig = create_candlestick_chart(df, bids, asks)
     st.plotly_chart(fig, use_container_width=True)
     
     st.divider()
     
-    # عرض الأوردر بوك التفصيلي
     display_detailed_order_book(bids, asks)
     
-    # ===== تحديث تلقائي =====
     if auto_refresh:
         st.caption("🔄 Auto-refreshing every 10 seconds...")
         time.sleep(10)
