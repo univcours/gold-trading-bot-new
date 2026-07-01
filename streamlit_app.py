@@ -15,78 +15,71 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# ====================== دوال جلب البيانات الحقيقية ======================
+# ====================== دوال جلب البيانات الحقيقية (من Bybit) ======================
 @st.cache_data(ttl=10)
-def get_klines(symbol="PAXGUSDT", interval="1m", limit=100):
-    """جلب بيانات الشموع الحقيقية من Binance باستخدام سيرفر بديل"""
+def get_klines(symbol="XAUUSDT", interval="1m", limit=100):
+    """جلب بيانات الشموع الحقيقية من Bybit V5"""
     try:
-        # استعمال api1 باش نتفاداو الضغط أو البلوك
-        url = "https://api1.binance.com/api/v3/klines"
+        url = "https://api.bybit.com/v5/market/kline"
+        
+        # تحويل الإطار الزمني للصيغة لي كتقبلها Bybit
+        timeframe_map = {"1m": "1", "5m": "5", "15m": "15", "30m": "30", "1h": "60", "4h": "240", "1d": "D"}
+        bybit_interval = timeframe_map.get(interval, "1")
+        
         params = {
+            "category": "linear",
             "symbol": symbol,
-            "interval": interval,
+            "interval": bybit_interval,
             "limit": limit
         }
         
-        headers = {
-            "User-Agent": "Mozilla/5.0"
-        }
-        
-        # زدنا فـ timeout لـ 20 ثانية
-        response = requests.get(url, params=params, headers=headers, timeout=20)
+        response = requests.get(url, params=params, timeout=15)
         
         if response.status_code == 200:
             data = response.json()
             
-            if not data:
-                st.warning("⚠️ لا توجد بيانات من Binance، نستعمل بيانات تجريبية")
+            if data['retCode'] != 0 or not data['result']['list']:
+                st.warning("⚠️ لا توجد بيانات، نستعمل بيانات تجريبية")
                 return generate_mock_data(limit)
             
-            df = pd.DataFrame(data, columns=[
-                'timestamp', 'open', 'high', 'low', 'close', 'volume',
-                'close_time', 'quote_asset_volume', 'number_of_trades',
-                'taker_buy_base_asset_volume', 'taker_buy_quote_asset_volume', 'ignore'
-            ])
+            # Bybit كترجع البيانات من الأحدث للأقدم، خصنا نقلبوها
+            raw_list = data['result']['list']
             
-            df['timestamp'] = pd.to_datetime(df['timestamp'], unit='ms')
+            df = pd.DataFrame(raw_list, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume', 'turnover'])
+            df = df.iloc[::-1].reset_index(drop=True) # قلب الترتيب
+            
+            df['timestamp'] = pd.to_datetime(df['timestamp'].astype(float), unit='ms')
             df[['open', 'high', 'low', 'close', 'volume']] = df[['open', 'high', 'low', 'close', 'volume']].astype(float)
             
             return df[['timestamp', 'open', 'high', 'low', 'close', 'volume']]
         else:
-            st.warning(f"⚠️ API Binance مشغول (Status: {response.status_code})، نستعمل بيانات تجريبية")
             return generate_mock_data(limit)
             
-    except requests.exceptions.Timeout:
-        st.warning("⚠️ الوقت انتهى في الاتصال بـ Binance، نستعمل بيانات تجريبية")
-        return generate_mock_data(limit)
     except Exception as e:
-        st.warning(f"⚠️ خطأ في الاتصال: {str(e)}، نستعمل بيانات تجريبية")
         return generate_mock_data(limit)
 
 @st.cache_data(ttl=5)
-def get_order_book(symbol="PAXGUSDT", limit=50):
-    """جلب الأوردر بوك الحقيقي من Binance"""
+def get_order_book(symbol="XAUUSDT", limit=50):
+    """جلب الأوردر بوك الحقيقي من Bybit"""
     try:
-        url = "https://api1.binance.com/api/v3/depth"
+        url = "https://api.bybit.com/v5/market/orderbook"
         params = {
+            "category": "linear",
             "symbol": symbol,
             "limit": limit
         }
         
-        headers = {
-            "User-Agent": "Mozilla/5.0"
-        }
-        
-        response = requests.get(url, params=params, headers=headers, timeout=20)
+        response = requests.get(url, params=params, timeout=15)
         
         if response.status_code == 200:
             data = response.json()
             
-            if not data or 'bids' not in data or 'asks' not in data:
+            if data['retCode'] != 0:
                 return generate_mock_order_book(limit)
             
-            bids = pd.DataFrame(data['bids'], columns=['price', 'quantity'], dtype=float)
-            asks = pd.DataFrame(data['asks'], columns=['price', 'quantity'], dtype=float)
+            # b = bids (طلبات الشراء), a = asks (طلبات البيع)
+            bids = pd.DataFrame(data['result']['b'], columns=['price', 'quantity'], dtype=float)
+            asks = pd.DataFrame(data['result']['a'], columns=['price', 'quantity'], dtype=float)
             
             if len(bids) == 0 or len(asks) == 0:
                 return generate_mock_order_book(limit)
@@ -107,20 +100,21 @@ def get_order_book(symbol="PAXGUSDT", limit=50):
         return generate_mock_order_book(limit)
 
 @st.cache_data(ttl=5)
-def get_current_price(symbol="PAXGUSDT"):
-    """جلب السعر الحالي للذهب من Binance"""
+def get_current_price(symbol="XAUUSDT"):
+    """جلب السعر الحالي للذهب من Bybit"""
     try:
-        url = "https://api1.binance.com/api/v3/ticker/price"
-        params = {"symbol": symbol}
-        headers = {"User-Agent": "Mozilla/5.0"}
+        url = "https://api.bybit.com/v5/market/tickers"
+        params = {
+            "category": "linear",
+            "symbol": symbol
+        }
         
-        response = requests.get(url, params=params, headers=headers, timeout=20)
+        response = requests.get(url, params=params, timeout=15)
         
         if response.status_code == 200:
             data = response.json()
-            if 'price' in data:
-                return float(data['price'])
-            return None
+            if data['retCode'] == 0 and data['result']['list']:
+                return float(data['result']['list'][0]['lastPrice'])
         return None
             
     except Exception as e:
@@ -295,7 +289,7 @@ def create_candlestick_chart(df, bids, asks):
     fig.update_layout(
         height=800,
         template='plotly_dark',
-        title_text='📊 PAXGUSDT (Gold) - Live Trading Dashboard',
+        title_text='📊 XAUUSDT (Gold) - Live Bybit Dashboard',
         title_font=dict(size=24, color='white'),
         showlegend=True,
         legend=dict(
@@ -406,7 +400,7 @@ def display_market_stats(df, bids, asks, current_price):
     col1, col2, col3, col4 = st.columns(4)
     
     with col1:
-        st.metric("💰 PAXG Price (Gold)", f"${price:.2f}", f"{price_change:+.2f}%")
+        st.metric("💰 XAUUSDT Price", f"${price:.2f}", f"{price_change:+.2f}%")
     
     with col2:
         st.metric("📊 Volume", f"{df['volume'].sum():,.2f}")
@@ -440,7 +434,7 @@ def display_market_stats(df, bids, asks, current_price):
 # ====================== الواجهة الرئيسية ======================
 def main():
     st.title("🏆 Professional Gold Trading Bot")
-    st.markdown("### 🔥 Live PAXGUSDT (Gold) Analysis with Real-time Order Book")
+    st.markdown("### 🔥 Live XAUUSDT Analysis with Bybit Order Book")
     st.markdown("---")
     
     with st.sidebar:
@@ -472,7 +466,7 @@ def main():
         auto_refresh = st.checkbox("🔄 Auto Refresh", value=True)
         
         st.divider()
-        st.info("📡 Connected to Binance")
+        st.info("📡 Connected to Bybit")
         st.caption(f"Last Update: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
         
         if st.button("🔄 Refresh Now", use_container_width=True):
@@ -481,19 +475,20 @@ def main():
     
     with st.spinner("🔄 Loading market data..."):
         try:
-            current_price = get_current_price("PAXGUSDT")
+            # دابا خدامين ب XAUUSDT ديال بصح ف Bybit
+            current_price = get_current_price("XAUUSDT")
             
             if current_price:
-                st.success(f"✅ السعر الحقيقي لـ PAXG: ${current_price:.2f}")
+                st.success(f"✅ السعر الحقيقي لـ الذهب: ${current_price:.2f}")
             else:
-                st.warning("⚠️ جاري استعمال بيانات تجريبية (مقدرناش نجيبو السعر)")
+                st.warning("⚠️ جاري استعمال بيانات تجريبية")
             
-            df = get_klines("PAXGUSDT", timeframe, candle_limit)
+            df = get_klines("XAUUSDT", timeframe, candle_limit)
             
             if df.empty:
                 df = generate_mock_data(candle_limit)
             
-            bids, asks = get_order_book("PAXGUSDT", depth_levels)
+            bids, asks = get_order_book("XAUUSDT", depth_levels)
             
             if bids.empty or asks.empty:
                 bids, asks = generate_mock_order_book(depth_levels)
